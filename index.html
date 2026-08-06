@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Notes Terrain — Mission QoS</title>
+<style>
+:root{
+  --orange:#FF6600;
+  --orange-dark:#cc4400;
+  --bg:#ffffff;
+  --bg-soft:#f7f8fa;
+  --bg-softer:#f0f1f3;
+  --text:#0d0f14;
+  --text-soft:#4b5262;
+  --text-mute:#8a93a3;
+  --border:#e2e5ea;
+  --cyan:#0098A6;
+  --green:#16A34A;
+  --amber:#E8A317;
+  --red:#DC2626;
+  --font-head:'Syne','Segoe UI',Arial,sans-serif;
+  --font-body:'Segoe UI',Arial,sans-serif;
+  --font-mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%; overscroll-behavior:none;}
+body{margin:0;font-family:var(--font-body);color:var(--text);background:var(--bg-softer);overflow:hidden;position:fixed;inset:0;}
+#app{display:flex;flex-direction:column;height:100%;}
+
+header{
+  background:var(--bg); border-bottom:1px solid var(--border);
+  padding:calc(10px + var(--safe-t)) 14px 10px;
+  display:flex; align-items:center; gap:10px; flex:none; z-index:30;
+}
+.mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--orange),var(--orange-dark));display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--font-head);font-weight:800;font-size:13px;flex:none;}
+header h1{font-family:var(--font-head);font-size:14.5px;font-weight:800;margin:0;line-height:1.2;}
+header .sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.3px;}
+.hdr-stats{margin-left:auto;display:flex;gap:6px;}
+.hdr-stat{background:var(--bg-soft);border:1px solid var(--border);border-radius:8px;padding:3px 8px;text-align:center;}
+.hdr-stat b{display:block;font-family:var(--font-mono);font-size:13px;line-height:1.1;}
+.hdr-stat small{font-size:8px;color:var(--text-mute);text-transform:uppercase;}
+
+#mapWrap{position:relative;flex:1;min-height:0;background:radial-gradient(circle at 50% 40%,#fffaf5 0%,var(--bg-softer) 75%);overflow:hidden;}
+#mapSvg{width:100%;height:100%;display:block;touch-action:none;}
+
+.gpsbadge{
+  position:absolute; top:10px; left:10px; z-index:20;
+  background:rgba(255,255,255,.95); border:1px solid var(--border); border-radius:9px;
+  padding:6px 10px; font-family:var(--font-mono); font-size:10.5px; color:var(--text-soft);
+  box-shadow:0 3px 10px rgba(13,15,20,.08); max-width:62%;
+}
+.gpsbadge.searching{color:var(--amber);}
+.gpsbadge.error{color:var(--red);}
+.gpsbadge b{display:block;font-size:9px;color:var(--text-mute);text-transform:uppercase;font-family:var(--font-body);font-weight:700;letter-spacing:.3px;margin-bottom:1px;}
+
+.maptools{position:absolute; top:10px; right:10px; z-index:20; display:flex; flex-direction:column; gap:6px;}
+.maptools button{
+  width:38px;height:38px;border-radius:10px;border:1px solid var(--border);
+  background:rgba(255,255,255,.95); font-size:16px; color:var(--text-soft); box-shadow:0 3px 10px rgba(13,15,20,.08);
+}
+.maptools button.on{background:var(--orange); color:#fff; border-color:var(--orange);}
+
+.fab-wrap{
+  position:absolute; left:0; right:0; bottom:calc(16px + var(--safe-b)); z-index:25;
+  display:flex; align-items:center; justify-content:center; gap:14px; pointer-events:none;
+}
+.fab-wrap > *{ pointer-events:auto; }
+#btnMark{
+  width:74px;height:74px;border-radius:50%; border:none;
+  background:linear-gradient(135deg,var(--orange),var(--orange-dark)); color:#fff;
+  font-size:30px; box-shadow:0 8px 20px rgba(204,68,0,.4); font-weight:800;
+}
+#btnMark:active{transform:scale(.95);}
+#btnMark:disabled{background:#c9ccd3; box-shadow:none;}
+.fab-side{
+  width:50px;height:50px;border-radius:50%;border:1px solid var(--border);
+  background:rgba(255,255,255,.96); font-size:19px; box-shadow:0 4px 12px rgba(13,15,20,.1); color:var(--text-soft);
+}
+.fab-side.list b{display:block;font-family:var(--font-mono);font-size:10px;color:var(--orange-dark);}
+
+/* ---------- points list (slide-up panel) ---------- */
+#listPanel{
+  position:absolute; left:0; right:0; bottom:0; z-index:40;
+  background:var(--bg); border-radius:18px 18px 0 0; box-shadow:0 -8px 24px rgba(13,15,20,.18);
+  max-height:72%; display:flex; flex-direction:column;
+  transform:translateY(100%); transition:transform .22s ease;
+  padding-bottom:var(--safe-b);
+}
+#listPanel.open{transform:translateY(0);}
+.panel-handle{width:38px;height:4px;background:var(--border);border-radius:3px;margin:10px auto 4px;}
+.panel-head{display:flex;align-items:center;justify-content:space-between;padding:4px 16px 10px;border-bottom:1px solid var(--border);}
+.panel-head h2{font-family:var(--font-head);font-size:15px;margin:0;}
+.panel-head button{border:none;background:var(--bg-soft);width:30px;height:30px;border-radius:8px;font-size:15px;color:var(--text-mute);}
+#pointsList{overflow-y:auto; padding:8px 10px;}
+.point-row{
+  display:flex; gap:10px; align-items:flex-start; padding:10px; border-radius:12px; margin-bottom:6px;
+  background:var(--bg-soft); border:1px solid var(--border);
+}
+.point-row .num{
+  width:28px;height:28px;border-radius:50%;background:var(--orange);color:#fff;flex:none;
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;font-size:12px;
+}
+.point-row .body{flex:1;min-width:0;}
+.point-row .name{font-weight:700;font-size:13.5px;}
+.point-row .meta{font-family:var(--font-mono);font-size:10px;color:var(--text-mute);margin-top:1px;}
+.point-row .note{font-size:12px;color:var(--text-soft);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.point-row .media-badges{display:flex;gap:4px;margin-top:5px;}
+.mbadge{font-size:9.5px;font-family:var(--font-mono);background:var(--bg-softer);border-radius:5px;padding:2px 6px;color:var(--text-soft);}
+.empty-list{padding:30px 16px;text-align:center;color:var(--text-mute);font-size:13px;}
+
+/* ---------- editor overlay ---------- */
+#editorOverlay{
+  position:fixed; inset:0; background:var(--bg); z-index:60; display:none; flex-direction:column;
+}
+#editorOverlay.open{display:flex;}
+.editor-head{
+  display:flex; align-items:center; gap:10px; padding:calc(12px + var(--safe-t)) 14px 12px;
+  border-bottom:1px solid var(--border);
+}
+.editor-head input#pointName{
+  font-family:var(--font-head); font-size:17px; font-weight:800; border:none; background:transparent;
+  flex:1; min-width:0; padding:4px 0; color:var(--text);
+}
+.editor-head button{border:none;background:var(--bg-soft);width:34px;height:34px;border-radius:9px;font-size:16px;color:var(--text-mute);flex:none;}
+.editor-body{flex:1;overflow-y:auto;padding:14px 16px calc(24px + var(--safe-b));}
+.editor-meta{font-family:var(--font-mono);font-size:11px;color:var(--text-mute);background:var(--bg-soft);border-radius:10px;padding:8px 12px;margin-bottom:14px;line-height:1.7;}
+.editor-meta .warn{color:#a9720a;}
+label.field-label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-mute);font-weight:700;margin:0 0 6px;}
+textarea#pointNotes{
+  width:100%; min-height:110px; border:1px solid var(--border); border-radius:12px; padding:12px;
+  font-family:var(--font-body); font-size:14.5px; color:var(--text); resize:vertical; background:var(--bg-soft);
+}
+.media-btn-row{display:flex;gap:8px;margin:14px 0;}
+.media-btn{
+  flex:1; border:1.5px dashed var(--border); border-radius:12px; background:var(--bg-soft);
+  padding:14px 8px; font-size:12.5px; font-weight:700; color:var(--text-soft); text-align:center;
+}
+.media-btn .ic{display:block;font-size:22px;margin-bottom:4px;}
+.media-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:6px;}
+.media-thumb{position:relative;border-radius:10px;overflow:hidden;background:var(--bg-softer);aspect-ratio:1;border:1px solid var(--border);}
+.media-thumb img,.media-thumb video{width:100%;height:100%;object-fit:cover;display:block;}
+.media-thumb .del{
+  position:absolute; top:3px; right:3px; width:20px;height:20px;border-radius:50%;
+  background:rgba(13,15,20,.65); color:#fff; border:none; font-size:11px; line-height:20px; text-align:center; padding:0;
+}
+.media-thumb .kind{position:absolute;bottom:3px;left:3px;background:rgba(13,15,20,.65);color:#fff;font-size:8.5px;border-radius:4px;padding:1px 4px;font-family:var(--font-mono);}
+.editor-footer{display:flex;gap:10px;padding:12px 16px calc(14px + var(--safe-b));border-top:1px solid var(--border);}
+.btn{border:none;border-radius:11px;padding:13px 16px;font-size:14px;font-weight:700;flex:1;background:var(--bg-soft);color:var(--text);}
+.btn.primary{background:var(--orange);color:#fff;}
+.btn.danger{background:#fff0ef;color:var(--red);}
+
+/* ---------- export bar ---------- */
+#exportBar{position:absolute;top:calc(56px + var(--safe-t));left:10px;right:10px;z-index:19;display:flex;gap:6px;}
+.exp-chip{
+  flex:1; background:rgba(255,255,255,.96); border:1px solid var(--border); border-radius:9px;
+  padding:8px 6px; font-size:11px; font-weight:700; color:var(--text-soft); text-align:center;
+  box-shadow:0 3px 10px rgba(13,15,20,.08);
+}
+.exp-chip.primary{background:var(--orange); color:#fff; border-color:var(--orange);}
+
+#toast{
+  position:fixed; left:50%; bottom:calc(150px + var(--safe-b)); transform:translateX(-50%);
+  background:var(--text); color:#fff; padding:9px 16px; border-radius:9px; font-size:12.5px; z-index:80;
+  opacity:0; transition:opacity .25s; pointer-events:none; max-width:85%; text-align:center;
+}
+#toast.show{opacity:1;}
+
+#fileImg,#fileVid{display:none;}
+::-webkit-scrollbar{width:0;height:0;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="mark">OS</div>
+    <div>
+      <h1>Notes Terrain</h1>
+      <span class="sub">Mission QoS · Relevé de points</span>
+    </div>
+    <div class="hdr-stats">
+      <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
+      <div class="hdr-stat"><b id="statMedia">0</b><small>Médias</small></div>
+    </div>
+  </header>
+
+  <div id="mapWrap">
+    <svg id="mapSvg"><g id="mapLayer"></g></svg>
+
+    <div class="gpsbadge searching" id="gpsBadge"><b>Position</b>Recherche du signal…</div>
+
+    <div id="exportBar">
+      <button class="exp-chip primary" id="btnExportZip">💾 Exporter (.zip)</button>
+      <button class="exp-chip" id="btnExportXlsx">📊 Tableau (.xlsx)</button>
+    </div>
+
+    <div class="maptools">
+      <button id="btnFollow" class="on" title="Suivre ma position">🎯</button>
+      <button id="btnZoomIn" title="Zoomer">+</button>
+      <button id="btnZoomOut" title="Dézoomer">–</button>
+    </div>
+
+    <div class="fab-wrap">
+      <button class="fab-side list" id="btnOpenList" title="Liste des points">📋<b id="fabListCount">0</b></button>
+      <button id="btnMark" disabled title="Marquer un point">＋</button>
+      <button class="fab-side" id="btnTapHint" title="Placer un point manuellement">📍</button>
+    </div>
+  </div>
+
+  <div id="listPanel">
+    <div class="panel-handle"></div>
+    <div class="panel-head">
+      <h2>Points relevés</h2>
+      <button id="btnCloseList">✕</button>
+    </div>
+    <div id="pointsList"></div>
+  </div>
+
+  <div id="editorOverlay">
+    <div class="editor-head">
+      <input id="pointName" type="text" placeholder="Nom du point">
+      <button id="btnCloseEditor">✕</button>
+    </div>
+    <div class="editor-body">
+      <div class="editor-meta" id="editorMeta"></div>
+      <label class="field-label">Notes</label>
+      <textarea id="pointNotes" placeholder="Observations sur ce point…"></textarea>
+      <div class="media-btn-row">
+        <button class="media-btn" id="btnAddPhoto"><span class="ic">📷</span>Photo</button>
+        <button class="media-btn" id="btnAddVideo"><span class="ic">🎥</span>Vidéo</button>
+      </div>
+      <div class="media-grid" id="mediaGrid"></div>
+    </div>
+    <div class="editor-footer">
+      <button class="btn danger" id="btnDeletePoint">🗑 Supprimer</button>
+      <button class="btn primary" id="btnDoneEditor">✓ Terminé</button>
+    </div>
+  </div>
+
+  <input type="file" id="fileImg" accept="image/*" capture="environment" multiple>
+  <input type="file" id="fileVid" accept="video/*" capture="environment">
+  <div id="toast"></div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* =========================================================
+   0. XLSX / ZIP — écriture sans dépendance (identique à l'outil desktop)
+   ========================================================= */
+function xlsxColLetters(n){ let s=''; n=n+1; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; }
+function xlsxCrc32Table(){ const t=[]; for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++){ c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); } t[n]=c>>>0; } return t; }
+const XLSX_CRC_TABLE = xlsxCrc32Table();
+function xlsxCrc32(bytes){ let crc=0xFFFFFFFF; for(let i=0;i<bytes.length;i++){ crc=XLSX_CRC_TABLE[(crc^bytes[i])&0xFF]^(crc>>>8); } return (crc^0xFFFFFFFF)>>>0; }
+class XlsxByteWriter{
+  constructor(){ this.parts=[]; this.len=0; }
+  u16(v){ const b=new Uint8Array(2); new DataView(b.buffer).setUint16(0,v,true); this.parts.push(b); this.len+=2; }
+  u32(v){ const b=new Uint8Array(4); new DataView(b.buffer).setUint32(0,v,true); this.parts.push(b); this.len+=4; }
+  bytes(a){ this.parts.push(a); this.len+=a.length; }
+  toUint8Array(){ const out=new Uint8Array(this.len); let o=0; for(const p of this.parts){ out.set(p,o); o+=p.length; } return out; }
+}
+function xlsxEscapeXml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
+function xlsxIsNumericStr(s){ if(s===''||s===null||s===undefined) return false; return /^-?\d+(\.\d+)?$/.test(String(s).trim()); }
+function xlsxBuildSheetXml(rows){
+  let body='';
+  rows.forEach((row,ri)=>{
+    body+=`<row r="${ri+1}">`;
+    row.forEach((val,ci)=>{
+      if(val===''||val===undefined||val===null) return;
+      const ref=xlsxColLetters(ci)+(ri+1);
+      if(xlsxIsNumericStr(val)) body+=`<c r="${ref}"><v>${val}</v></c>`;
+      else body+=`<c r="${ref}" t="inlineStr"><is><t>${xlsxEscapeXml(val)}</t></is></c>`;
+    });
+    body+='</row>';
+  });
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+body+'</sheetData></worksheet>';
+}
+function buildZip(files){
+  const bw=new XlsxByteWriter(); const central=[];
+  files.forEach(({name,data})=>{
+    const nameBytes=new TextEncoder().encode(name);
+    const crc=xlsxCrc32(data), localOffset=bw.len;
+    bw.u32(0x04034b50); bw.u16(20); bw.u16(0); bw.u16(0); bw.u16(0); bw.u16(0x21);
+    bw.u32(crc); bw.u32(data.length); bw.u32(data.length);
+    bw.u16(nameBytes.length); bw.u16(0);
+    bw.bytes(nameBytes); bw.bytes(data);
+    central.push({nameBytes,crc,size:data.length,localOffset});
+  });
+  const cdStart=bw.len;
+  central.forEach(e=>{
+    bw.u32(0x02014b50); bw.u16(20); bw.u16(20); bw.u16(0); bw.u16(0); bw.u16(0); bw.u16(0x21);
+    bw.u32(e.crc); bw.u32(e.size); bw.u32(e.size);
+    bw.u16(e.nameBytes.length); bw.u16(0); bw.u16(0); bw.u16(0); bw.u16(0); bw.u32(0);
+    bw.u32(e.localOffset); bw.bytes(e.nameBytes);
+  });
+  const cdSize=bw.len-cdStart;
+  bw.u32(0x06054b50); bw.u16(0); bw.u16(0); bw.u16(central.length); bw.u16(central.length);
+  bw.u32(cdSize); bw.u32(cdStart); bw.u16(0);
+  return bw.toUint8Array();
+}
+function buildXlsxBlob(rows, sheetName){
+  sheetName = sheetName || 'Sheet1';
+  const contentTypes='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>';
+  const rootRels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  const workbookXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xlsxEscapeXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+  const wbRels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>';
+  const sheetXml=xlsxBuildSheetXml(rows);
+  return buildZip([
+    {name:'[Content_Types].xml', data:new TextEncoder().encode(contentTypes)},
+    {name:'_rels/.rels', data:new TextEncoder().encode(rootRels)},
+    {name:'xl/workbook.xml', data:new TextEncoder().encode(workbookXml)},
+    {name:'xl/_rels/workbook.xml.rels', data:new TextEncoder().encode(wbRels)},
+    {name:'xl/worksheets/sheet1.xml', data:new TextEncoder().encode(sheetXml)}
+  ]);
+}
+function downloadBytes(filename, bytes, mime){
+  const blob=new Blob([bytes], {type:mime});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+function downloadXlsx(filename, rows, sheetName){
+  downloadBytes(filename, buildXlsxBlob(rows, sheetName), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+}
+
+/* =========================================================
+   1. STOCKAGE — window.storage si dispo (aperçu Claude), sinon localStorage (usage autonome)
+   ========================================================= */
+const Store = {
+  async get(key){
+    if(typeof window.storage!=='undefined' && window.storage){
+      try{ const r=await window.storage.get(key,false); return r? JSON.parse(r.value):null; }catch(e){ return null; }
+    }
+    try{ const v=localStorage.getItem(key); return v? JSON.parse(v):null; }catch(e){ return null; }
+  },
+  async set(key,value){
+    if(typeof window.storage!=='undefined' && window.storage){
+      try{ await window.storage.set(key, JSON.stringify(value), false); return; }catch(e){}
+    }
+    try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){}
+  }
+};
+const STORE_KEY = 'terrain_notes_points_v1';
+
+/* =========================================================
+   2. ÉTAT
+   ========================================================= */
+let points = [];               // {id,name,lat,lon,accuracy,ts,notes,media:[{id,name,type}]}
+const mediaBlobs = new Map();  // mediaId -> {blob, url, type}
+let pointCounter = 0;
+let currentPos = null;         // {lat,lon,accuracy,ts}
+let watchId = null;
+let followMode = true;
+let center = null;             // {lat,lon} centre courant de la carte
+let mapScale = 2;              // mètres par pixel
+let selectedPointId = null;
+let editingPointId = null;
+
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function fmtTime(ts){ const d=new Date(ts); return d.toLocaleDateString('fr-FR')+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }
+function toast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toast._h); toast._h=setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* =========================================================
+   3. PROJECTION LOCALE (mètres, plate — échelle village/quartier)
+   ========================================================= */
+function project(lat,lon,W,H){
+  const kx = 111320*Math.cos(center.lat*Math.PI/180);
+  const dx=(lon-center.lon)*kx, dy=(center.lat-lat)*111320;
+  return [W/2+dx/mapScale, H/2+dy/mapScale];
+}
+function unproject(px,py,W,H){
+  const kx = 111320*Math.cos(center.lat*Math.PI/180);
+  const dx=(px-W/2)*mapScale, dy=(py-H/2)*mapScale;
+  return [center.lat-dy/111320, center.lon+dx/kx];
+}
+
+/* =========================================================
+   4. GÉOLOCALISATION
+   ========================================================= */
+const gpsBadge=document.getElementById('gpsBadge');
+const btnMark=document.getElementById('btnMark');
+
+function onGeoSuccess(pos){
+  currentPos = { lat:pos.coords.latitude, lon:pos.coords.longitude, accuracy:pos.coords.accuracy, ts:Date.now() };
+  gpsBadge.classList.remove('searching','error');
+  gpsBadge.innerHTML = `<b>Position</b>${currentPos.lat.toFixed(5)}, ${currentPos.lon.toFixed(5)} · ±${Math.round(currentPos.accuracy)} m`;
+  btnMark.disabled=false;
+  if(!center) center = { lat:currentPos.lat, lon:currentPos.lon };
+  if(followMode) center = { lat:currentPos.lat, lon:currentPos.lon };
+  renderMap();
+}
+function onGeoError(err){
+  gpsBadge.classList.add('error'); gpsBadge.classList.remove('searching');
+  gpsBadge.innerHTML = `<b>Position indisponible</b>${err.message||'Vérifiez les autorisations de localisation'}`;
+  if(!center) center = { lat:14.7167, lon:-17.4677 }; // repli neutre (Dakar) tant qu'aucune position n'est connue
+}
+function startGeo(){
+  if(!('geolocation' in navigator)){ onGeoError({message:'Géolocalisation non supportée par ce navigateur.'}); return; }
+  gpsBadge.classList.add('searching');
+  if(watchId!==null) navigator.geolocation.clearWatch(watchId);
+  watchId = navigator.geolocation.watchPosition(onGeoSuccess, onGeoError, { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
+}
+
+/* =========================================================
+   5. RENDU CARTE
+   ========================================================= */
+const svg=document.getElementById('mapSvg'), layer=document.getElementById('mapLayer');
+function dims(){ const r=svg.getBoundingClientRect(); return [r.width||360, r.height||500]; }
+
+function renderMap(){
+  if(!center) return;
+  const [W,H] = dims();
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const parts=[];
+
+  // repère nord discret
+  parts.push(`<line x1="${W-26}" y1="18" x2="${W-26}" y2="34" stroke="#8a93a3" stroke-width="1.4"/><polygon points="${W-26},12 ${W-31},22 ${W-21},22" fill="#8a93a3"/>`);
+
+  // position courante + cercle de précision
+  if(currentPos){
+    const [cx,cy] = project(currentPos.lat, currentPos.lon, W, H);
+    const rAcc = Math.max(6, currentPos.accuracy/mapScale);
+    parts.push(`<circle cx="${cx}" cy="${cy}" r="${rAcc}" fill="#0098A6" fill-opacity="0.12" stroke="#0098A6" stroke-width="1" stroke-dasharray="3,2"/>`);
+    parts.push(`<circle cx="${cx}" cy="${cy}" r="8" fill="#0098A6" stroke="#fff" stroke-width="2.5"/>`);
+  }
+
+  // points relevés
+  points.forEach((p,i)=>{
+    const [px,py] = project(p.lat,p.lon,W,H);
+    const isSel = p.id===selectedPointId;
+    const col = '#FF6600';
+    parts.push(`<g data-point="${p.id}">
+      <circle cx="${px}" cy="${py-14}" r="${isSel?15:12}" fill="${col}" stroke="#fff" stroke-width="2"/>
+      <text x="${px}" y="${py-10}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-weight="700" font-size="11" fill="#fff">${i+1}</text>
+      <path d="M${px},${py} l-7,-10 a9,9 0 1 1 14,0 Z" fill="${col}" opacity="0"/>
+    </g>`);
+  });
+
+  layer.innerHTML = parts.join('');
+}
+
+/* pan tactile */
+let dragging=false, dragStart=null, centerStart=null, moved=false;
+svg.addEventListener('pointerdown', e=>{
+  dragging=true; moved=false; dragStart=[e.clientX,e.clientY]; centerStart={...center};
+  svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  const dx=e.clientX-dragStart[0], dy=e.clientY-dragStart[1];
+  if(Math.abs(dx)>4||Math.abs(dy)>4) moved=true;
+  if(!moved) return;
+  const kx = 111320*Math.cos(centerStart.lat*Math.PI/180);
+  center = { lat: centerStart.lat + (dy*mapScale)/111320, lon: centerStart.lon - (dx*mapScale)/kx };
+  if(followMode){ followMode=false; document.getElementById('btnFollow').classList.remove('on'); }
+  renderMap();
+});
+svg.addEventListener('pointerup', e=>{
+  dragging=false;
+  if(!moved){
+    const rect=svg.getBoundingClientRect();
+    const px=e.clientX-rect.left, py=e.clientY-rect.top;
+    const t=e.target.closest('[data-point]');
+    if(t){ openEditor(t.dataset.point); }
+    else {
+      const [lat,lon]=unproject(px,py,rect.width,rect.height);
+      addPoint(lat,lon,null,true);
+    }
+  }
+});
+
+document.getElementById('btnFollow').addEventListener('click', e=>{
+  followMode=!followMode;
+  e.currentTarget.classList.toggle('on', followMode);
+  if(followMode && currentPos){ center={lat:currentPos.lat,lon:currentPos.lon}; renderMap(); }
+});
+document.getElementById('btnZoomIn').addEventListener('click', ()=>{ mapScale=Math.max(0.4, mapScale*0.7); renderMap(); });
+document.getElementById('btnZoomOut').addEventListener('click', ()=>{ mapScale=Math.min(60, mapScale*1.4); renderMap(); });
+window.addEventListener('resize', renderMap);
+
+/* =========================================================
+   6. POINTS — création / persistance
+   ========================================================= */
+async function persist(){
+  await Store.set(STORE_KEY, { points, pointCounter, savedAt:Date.now() });
+}
+async function restore(){
+  const saved = await Store.get(STORE_KEY);
+  if(saved && Array.isArray(saved.points)){
+    points = saved.points;
+    pointCounter = saved.pointCounter || points.length;
+    if(points.length){ toast(points.length+' point(s) restauré(s) — photos/vidéos à ré-attacher si besoin'); }
+  }
+}
+
+function addPoint(lat, lon, accuracy, openAfter){
+  pointCounter++;
+  const p = { id:uid(), name:'Point '+pointCounter, lat, lon, accuracy:accuracy||null, ts:Date.now(), notes:'', media:[] };
+  points.push(p);
+  persist(); renderAll();
+  if(openAfter) openEditor(p.id);
+  return p;
+}
+btnMark.addEventListener('click', ()=>{
+  if(!currentPos){ toast('Position GPS non disponible pour le moment'); return; }
+  addPoint(currentPos.lat, currentPos.lon, currentPos.accuracy, true);
+});
+document.getElementById('btnTapHint').addEventListener('click', ()=>{
+  toast('Touchez la carte à l’endroit voulu pour placer un point');
+});
+
+function deletePoint(id){
+  const p = points.find(x=>x.id===id);
+  if(p) p.media.forEach(m=>{ const mb=mediaBlobs.get(m.id); if(mb){ URL.revokeObjectURL(mb.url); mediaBlobs.delete(m.id); } });
+  points = points.filter(x=>x.id!==id);
+  persist(); renderAll();
+}
+
+/* =========================================================
+   7. LISTE DES POINTS
+   ========================================================= */
+const listPanel=document.getElementById('listPanel');
+document.getElementById('btnOpenList').addEventListener('click', ()=>listPanel.classList.add('open'));
+document.getElementById('btnCloseList').addEventListener('click', ()=>listPanel.classList.remove('open'));
+
+function renderList(){
+  const wrap=document.getElementById('pointsList');
+  if(!points.length){ wrap.innerHTML='<div class="empty-list">Aucun point relevé pour l’instant.<br>Touchez ＋ pour marquer votre position.</div>'; return; }
+  wrap.innerHTML = points.slice().reverse().map(p=>{
+    const idx = points.indexOf(p)+1;
+    const nPhoto = p.media.filter(m=>m.type==='image').length;
+    const nVideo = p.media.filter(m=>m.type==='video').length;
+    return `<div class="point-row" data-point="${p.id}">
+      <div class="num">${idx}</div>
+      <div class="body">
+        <div class="name">${p.name}</div>
+        <div class="meta">${fmtTime(p.ts)}${p.accuracy?' · ±'+Math.round(p.accuracy)+'m':''}</div>
+        ${p.notes? `<div class="note">${p.notes}</div>`:''}
+        ${(nPhoto||nVideo)? `<div class="media-badges">${nPhoto?`<span class="mbadge">📷 ${nPhoto}</span>`:''}${nVideo?`<span class="mbadge">🎥 ${nVideo}</span>`:''}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('.point-row').forEach(row=>row.addEventListener('click', ()=>{
+    listPanel.classList.remove('open');
+    openEditor(row.dataset.point);
+  }));
+}
+
+function renderStats(){
+  document.getElementById('statPoints').textContent = points.length;
+  const nMedia = points.reduce((s,p)=>s+p.media.length,0);
+  document.getElementById('statMedia').textContent = nMedia;
+  document.getElementById('fabListCount').textContent = points.length;
+}
+function renderAll(){ renderMap(); renderList(); renderStats(); }
+
+/* =========================================================
+   8. ÉDITEUR DE POINT
+   ========================================================= */
+const editorOverlay=document.getElementById('editorOverlay');
+const pointNameInput=document.getElementById('pointName');
+const pointNotesInput=document.getElementById('pointNotes');
+
+function openEditor(id){
+  editingPointId=id; selectedPointId=id;
+  const p = points.find(x=>x.id===id); if(!p) return;
+  pointNameInput.value=p.name;
+  pointNotesInput.value=p.notes;
+  document.getElementById('editorMeta').innerHTML =
+    `${fmtTime(p.ts)}<br>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}${p.accuracy? ' · précision ±'+Math.round(p.accuracy)+' m':' <span class="warn">· position placée manuellement</span>'}`;
+  renderMediaGrid(p);
+  editorOverlay.classList.add('open');
+  renderMap();
+}
+function closeEditor(){
+  if(editingPointId){
+    const p = points.find(x=>x.id===editingPointId);
+    if(p){ p.name = pointNameInput.value.trim()||p.name; p.notes = pointNotesInput.value; persist(); }
+  }
+  editingPointId=null;
+  editorOverlay.classList.remove('open');
+  renderAll();
+}
+document.getElementById('btnCloseEditor').addEventListener('click', closeEditor);
+document.getElementById('btnDoneEditor').addEventListener('click', closeEditor);
+document.getElementById('btnDeletePoint').addEventListener('click', ()=>{
+  if(!editingPointId) return;
+  if(confirm('Supprimer ce point et ses médias ?')){
+    deletePoint(editingPointId);
+    editingPointId=null;
+    editorOverlay.classList.remove('open');
+  }
+});
+
+function renderMediaGrid(p){
+  const grid=document.getElementById('mediaGrid');
+  grid.innerHTML = p.media.map(m=>{
+    const mb = mediaBlobs.get(m.id);
+    const src = mb? mb.url : '';
+    const inner = !mb ? `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:9px;color:#8a93a3;text-align:center;padding:4px;">déjà<br>téléchargé</div>`
+      : (m.type==='image' ? `<img src="${src}">` : `<video src="${src}" muted></video>`);
+    return `<div class="media-thumb" data-media="${m.id}">${inner}<span class="kind">${m.type==='image'?'📷':'🎥'}</span><button class="del" data-del="${m.id}">✕</button></div>`;
+  }).join('');
+  grid.querySelectorAll('[data-del]').forEach(btn=>btn.addEventListener('click', ev=>{
+    ev.stopPropagation();
+    const mid=btn.dataset.del;
+    const p2=points.find(x=>x.id===editingPointId);
+    const mb=mediaBlobs.get(mid); if(mb){ URL.revokeObjectURL(mb.url); mediaBlobs.delete(mid); }
+    p2.media = p2.media.filter(m=>m.id!==mid);
+    persist(); renderMediaGrid(p2); renderStats();
+  }));
+}
+
+/* =========================================================
+   9. CAPTURE PHOTO / VIDÉO — téléchargement immédiat + aperçu mémoire
+   ========================================================= */
+const fileImg=document.getElementById('fileImg'), fileVid=document.getElementById('fileVid');
+document.getElementById('btnAddPhoto').addEventListener('click', ()=>fileImg.click());
+document.getElementById('btnAddVideo').addEventListener('click', ()=>fileVid.click());
+
+function safeName(s){ return (s||'point').replace(/[^a-z0-9_-]+/gi,'_').slice(0,40); }
+
+async function attachFiles(fileList, kind){
+  const p = points.find(x=>x.id===editingPointId); if(!p) return;
+  let n=1;
+  for(const file of fileList){
+    const mid=uid();
+    const ext = (file.name.split('.').pop()||(kind==='image'?'jpg':'mp4')).toLowerCase();
+    const fname = `${safeName(p.name)}_${kind}${p.media.filter(m=>m.type===kind).length+n}.${ext}`;
+    mediaBlobs.set(mid, { blob:file, url:URL.createObjectURL(file), type:kind });
+    p.media.push({ id:mid, name:fname, type:kind });
+    // téléchargement immédiat — sécurité si la session se ferme avant l'export groupé
+    downloadBytes(fname, new Uint8Array(await file.arrayBuffer()), file.type||'application/octet-stream');
+    n++;
+  }
+  persist(); renderMediaGrid(p); renderStats();
+  toast((kind==='image'?'Photo(s)':'Vidéo(s)')+' ajoutée(s) et téléchargée(s) sur l’appareil');
+}
+fileImg.addEventListener('change', e=>{ if(e.target.files.length) attachFiles(e.target.files,'image'); e.target.value=''; });
+fileVid.addEventListener('change', e=>{ if(e.target.files.length) attachFiles(e.target.files,'video'); e.target.value=''; });
+
+/* =========================================================
+   10. EXPORT
+   ========================================================= */
+function pointsToRows(){
+  const rows=[['#','Nom','Date/Heure','Latitude','Longitude','Précision (m)','Notes','Photos','Vidéo(s)']];
+  points.forEach((p,i)=>{
+    rows.push([i+1, p.name, fmtTime(p.ts), p.lat, p.lon, p.accuracy?Math.round(p.accuracy):'',
+      p.notes||'', p.media.filter(m=>m.type==='image').map(m=>m.name).join('; '), p.media.filter(m=>m.type==='video').map(m=>m.name).join('; ')]);
+  });
+  return rows;
+}
+document.getElementById('btnExportXlsx').addEventListener('click', ()=>{
+  if(!points.length){ toast('Aucun point à exporter'); return; }
+  downloadXlsx('notes_terrain_'+Date.now()+'.xlsx', pointsToRows(), 'Points');
+});
+document.getElementById('btnExportZip').addEventListener('click', async ()=>{
+  if(!points.length){ toast('Aucun point à exporter'); return; }
+  const rows = pointsToRows().map(r=>r.join(','));
+  const realFiles=[{ name:'points.csv', data:new TextEncoder().encode(rows.join('\n')) }];
+  let missing=0;
+  for(const p of points){
+    for(const m of p.media){
+      const mb=mediaBlobs.get(m.id);
+      if(mb){ realFiles.push({ name:'media/'+m.name, data:new Uint8Array(await mb.blob.arrayBuffer()) }); }
+      else missing++;
+    }
+  }
+  const zipBytes = buildZip(realFiles);
+  downloadBytes('mission_terrain_'+Date.now()+'.zip', zipBytes, 'application/zip');
+  if(missing) toast(missing+' média(s) déjà téléchargé(s) individuellement — non ré-inclus dans ce zip');
+});
+
+/* =========================================================
+   11. DÉMARRAGE
+   ========================================================= */
+(async function init(){
+  await restore();
+  renderAll();
+  startGeo();
+})();
+
+})();
+</script>
+</body>
+</html>
