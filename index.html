@@ -968,8 +968,9 @@ function endPointer(e){
       renderMap();
       return;
     }
-    const tp=e.target.closest('[data-point]');
-    const ts=e.target.closest('[data-site]');
+    const realTarget = document.elementFromPoint(e.clientX, e.clientY);
+    const tp = realTarget && realTarget.closest('[data-point]');
+    const ts = realTarget && realTarget.closest('[data-site]');
     if(tp){ cancelPointConfirm(); openEditor(tp.dataset.point); }
     else if(ts){ cancelPointConfirm(); openSiteDetail(ts.dataset.site); }
     else {
