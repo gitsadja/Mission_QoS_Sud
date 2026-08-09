@@ -279,6 +279,22 @@ textarea#pointNotes{
       <h2>Sites réseau <span id="sitesPanelCount" style="font-family:var(--font-mono);font-size:11px;color:var(--text-mute);font-weight:400;"></span></h2>
       <button id="btnCloseSites">✕</button>
     </div>
+
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+      <h3 style="font-family:var(--font-head);font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-mute);margin:0 0 8px;">📶 Identifier une cellule</h3>
+      <p style="font-size:10.5px;color:var(--text-mute);margin:-2px 0 8px;line-height:1.5;">Importe le fichier <code>active_4G_cells</code> (Excel), puis renseigne eNodeB + PCI + EARFCN pour retrouver le nom de la cellule. Table non sauvegardée entre les sessions — à réimporter à l'ouverture.</p>
+      <button class="btn" id="btnImportCellTable">📥 Importer active_4G_cells (Excel)</button>
+      <input type="file" id="fileInputCellTable" accept=".xlsx,.csv" style="display:none;">
+      <div id="cellTableStatus" style="font-size:11px;color:var(--text-mute);margin-bottom:8px;"></div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <input type="text" id="cellSearchEnb" placeholder="eNodeB" inputmode="numeric" style="flex:1;min-width:0;padding:9px 8px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;background:var(--bg-soft);color:var(--text);">
+        <input type="text" id="cellSearchPci" placeholder="PCI" inputmode="numeric" style="flex:1;min-width:0;padding:9px 8px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;background:var(--bg-soft);color:var(--text);">
+        <input type="text" id="cellSearchEarfcn" placeholder="EARFCN" inputmode="numeric" style="flex:1;min-width:0;padding:9px 8px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;background:var(--bg-soft);color:var(--text);">
+      </div>
+      <button class="btn primary" id="btnSearchCell">🔍 Rechercher</button>
+      <div id="cellSearchResults" style="margin-top:8px;max-height:220px;overflow-y:auto;"></div>
+    </div>
+
     <div class="panel-actions">
       <button class="btn" id="btnImportTypoMobile">📥 Actifs (Excel)</button>
       <button class="btn" id="btnImportAVenirMobile">📥 À venir (Excel)</button>
@@ -1397,6 +1413,87 @@ document.getElementById('btnExportZip').addEventListener('click', async ()=>{
   downloadBytes('mission_terrain_'+Date.now()+'.zip', zipBytes, 'application/zip');
   if(missing) toast(missing+' média(s) déjà téléchargé(s) individuellement — non ré-inclus dans ce zip');
 });
+
+/* =========================================================
+   10A. IDENTIFICATION DE CELLULE — eNodeB + PCI + EARFCN -> nom de cellule
+   ========================================================= */
+let CELL_TABLE = []; // {raw:{...toutes les colonnes...}, enodeb, pci, earfcn} — session uniquement, non persisté (fichier potentiellement volumineux)
+const ENODEB_ALIASES=['eNodeB','eNodeBId','ENODEB','ENB','ENBID','ENODEBID','eNB ID','ENODEB ID','GNBID','GNODEB'];
+const PCI_ALIASES=['PCI','Pci','Physical Cell ID','Physical cell ID','PhysicalCellId'];
+const EARFCN_ALIASES=['EARFCN','Earfcn','DLEARFCN','DL EARFCN','ARFCN'];
+
+function anyColPresent(g, aliases){ return aliases.some(a=>g.idx[normKey(a)]!==undefined); }
+function normId(s){
+  const t=String(s===undefined||s===null?'':s).trim();
+  if(t==='') return '';
+  const tNorm = t.replace(',', '.');
+  if(/^-?\d+(\.\d+)?$/.test(tNorm)){
+    const n = parseFloat(tNorm);
+    return String(Number.isInteger(n) ? Math.trunc(n) : n);
+  }
+  return t.toLowerCase();
+}
+
+function importCellTable(rows){
+  if(rows.length<2){ toast('Fichier vide ou invalide'); return; }
+  const g=rowsToGetter(rows);
+  if(!anyColPresent(g,ENODEB_ALIASES) || !anyColPresent(g,PCI_ALIASES) || !anyColPresent(g,EARFCN_ALIASES)){
+    toast('Colonnes eNodeB / PCI / EARFCN introuvables dans ce fichier');
+    return;
+  }
+  const headers = rows[0];
+  const table = [];
+  for(let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if(!r || !r.length) continue;
+    const raw = {};
+    headers.forEach((h,ci)=>{ raw[h] = r[ci]!==undefined ? String(r[ci]).trim() : ''; });
+    table.push({
+      raw,
+      enodeb: normId(g.rowAny(r, ENODEB_ALIASES)),
+      pci: normId(g.rowAny(r, PCI_ALIASES)),
+      earfcn: normId(g.rowAny(r, EARFCN_ALIASES))
+    });
+  }
+  CELL_TABLE = table;
+  document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s).';
+  toast(table.length+' cellule(s) chargée(s) depuis le fichier.');
+}
+async function handleCellTableFile(file){
+  try{ importCellTable(await readRowsFromFile(file)); }
+  catch(e){ toast('Import impossible : '+e.message); }
+}
+
+function renderCellSearchResults(matches){
+  const wrap = document.getElementById('cellSearchResults');
+  if(!matches.length){ wrap.innerHTML = '<div class="empty-list">Aucune cellule trouvée pour ces critères.</div>'; return; }
+  const shown = matches.slice(0,15);
+  wrap.innerHTML = shown.map(m=>{
+    const rowsHtml = Object.entries(m.raw).filter(([k,v])=>v!=='').map(([k,v])=>
+      `<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px dashed var(--border);font-size:11.5px;">
+        <span style="color:var(--text-mute);flex:none;">${k}</span>
+        <span style="font-family:var(--font-mono);font-weight:600;text-align:right;">${v}</span>
+      </div>`
+    ).join('');
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:var(--bg-soft);">${rowsHtml}</div>`;
+  }).join('') + (matches.length>shown.length ? `<div class="empty-list">+ ${matches.length-shown.length} autre(s) résultat(s) — affine ta recherche.</div>` : '');
+}
+function searchCell(){
+  if(!CELL_TABLE.length){ toast('Importe d\'abord le fichier active_4G_cells'); return; }
+  const enb=normId(document.getElementById('cellSearchEnb').value);
+  const pci=normId(document.getElementById('cellSearchPci').value);
+  const earfcn=normId(document.getElementById('cellSearchEarfcn').value);
+  if(!enb && !pci && !earfcn){ toast('Renseigne au moins un des trois champs'); return; }
+  const matches = CELL_TABLE.filter(c=>
+    (!enb || c.enodeb===enb) && (!pci || c.pci===pci) && (!earfcn || c.earfcn===earfcn)
+  );
+  renderCellSearchResults(matches);
+}
+document.getElementById('btnImportCellTable').addEventListener('click', ()=>document.getElementById('fileInputCellTable').click());
+document.getElementById('fileInputCellTable').addEventListener('change', e=>{
+  const f=e.target.files[0]; if(f) handleCellTableFile(f); e.target.value='';
+});
+document.getElementById('btnSearchCell').addEventListener('click', searchCell);
 
 /* =========================================================
    10B. RECHERCHE (points relevés + sites réseau)
