@@ -131,10 +131,10 @@ header .sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text-mute);
 .empty-list{padding:30px 16px;text-align:center;color:var(--text-mute);font-size:13px;}
 
 /* ---------- editor overlay ---------- */
-#editorOverlay, #siteDetailOverlay{
+#editorOverlay, #siteDetailOverlay, #searchOverlay{
   position:fixed; inset:0; background:var(--bg); z-index:60; display:none; flex-direction:column;
 }
-#editorOverlay.open, #siteDetailOverlay.open{display:flex;}
+#editorOverlay.open, #siteDetailOverlay.open, #searchOverlay.open{display:flex;}
 .editor-head{
   display:flex; align-items:center; gap:10px; padding:calc(12px + var(--safe-t)) 14px 12px;
   border-bottom:1px solid var(--border);
@@ -217,6 +217,7 @@ textarea#pointNotes{
     </div>
 
     <div class="maptools">
+      <button id="btnSearch" title="Rechercher">🔍</button>
       <button id="btnLayer" title="Fond de carte (Plan / Satellite / Aucun)">🗺️</button>
       <button id="btnFollow" class="on" title="Suivre ma position">🎯</button>
       <button id="btnZoomIn" title="Zoomer">+</button>
@@ -267,6 +268,14 @@ textarea#pointNotes{
       <button id="btnCloseSiteDetail">✕</button>
     </div>
     <div class="editor-body" id="siteDetailBody"></div>
+  </div>
+
+  <div id="searchOverlay">
+    <div class="editor-head">
+      <input id="searchInput" type="text" placeholder="Nom d'un point ou d'un site…" style="flex:1;min-width:0;border:none;background:var(--bg-soft);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--text);">
+      <button id="btnCloseSearch">✕</button>
+    </div>
+    <div class="editor-body" id="searchResultsList"></div>
   </div>
 
   <input type="file" id="fileInputTypoMobile" accept=".xlsx,.csv" style="display:none;">
@@ -836,23 +845,65 @@ function renderMap(){
   layer.innerHTML = parts.join('');
 }
 
-/* pan tactile */
+/* pan tactile + pincement-zoom */
 let dragging=false, dragStart=null, centerStart=null, moved=false;
+const activePointers = new Map();
+let pinch = null; // {startDist, startZoom, midX, midY, lastRatio}
+
+function pinchMidpoint(){
+  const pts=[...activePointers.values()];
+  const rect=svg.getBoundingClientRect();
+  return { x:(pts[0].x+pts[1].x)/2-rect.left, y:(pts[0].y+pts[1].y)/2-rect.top, dist:Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) };
+}
+function finalizePinch(){
+  if(!pinch) return;
+  const [W,H]=dims();
+  const [midLat,midLon]=unproject(pinch.midX,pinch.midY,W,H); // zoom/center encore ceux d'avant le geste
+  const deltaZoom=Math.log2(pinch.lastRatio||1);
+  zoom=Math.max(3, Math.min(19, Math.round(pinch.startZoom+deltaZoom)));
+  const wx=lonToX(midLon,zoom), wy=latToY(midLat,zoom);
+  center={ lat:yToLat(wy-pinch.midY+H/2,zoom), lon:xToLon(wx-pinch.midX+W/2,zoom) };
+  layer.style.transform=''; layer.style.transformOrigin='';
+  pinch=null;
+  renderMap();
+}
+
 svg.addEventListener('pointerdown', e=>{
-  dragging=true; moved=false; dragStart=[e.clientX,e.clientY]; centerStart={...center};
+  activePointers.set(e.pointerId, {x:e.clientX,y:e.clientY});
   svg.setPointerCapture(e.pointerId);
+  if(activePointers.size===1){
+    dragging=true; moved=false; dragStart=[e.clientX,e.clientY]; centerStart={...center};
+  } else if(activePointers.size===2){
+    dragging=false;
+    const m=pinchMidpoint();
+    pinch = { startDist:m.dist, startZoom:zoom, midX:m.x, midY:m.y, lastRatio:1 };
+    layer.style.transformOrigin = `${m.x}px ${m.y}px`;
+    moved=true;
+  }
 });
 svg.addEventListener('pointermove', e=>{
-  if(!dragging) return;
-  const dx=e.clientX-dragStart[0], dy=e.clientY-dragStart[1];
-  if(Math.abs(dx)>4||Math.abs(dy)>4) moved=true;
-  if(!moved) return;
-  const cx=lonToX(centerStart.lon,zoom)-dx, cy=latToY(centerStart.lat,zoom)-dy;
-  center = { lat: yToLat(cy,zoom), lon: xToLon(cx,zoom) };
-  if(followMode){ followMode=false; document.getElementById('btnFollow').classList.remove('on'); }
-  renderMap();
+  if(!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, {x:e.clientX,y:e.clientY});
+
+  if(pinch && activePointers.size===2){
+    const m=pinchMidpoint();
+    pinch.lastRatio = m.dist/pinch.startDist;
+    layer.style.transform = `scale(${pinch.lastRatio})`;
+    return;
+  }
+  if(dragging && activePointers.size===1){
+    const dx=e.clientX-dragStart[0], dy=e.clientY-dragStart[1];
+    if(Math.abs(dx)>4||Math.abs(dy)>4) moved=true;
+    if(!moved) return;
+    const cx=lonToX(centerStart.lon,zoom)-dx, cy=latToY(centerStart.lat,zoom)-dy;
+    center = { lat: yToLat(cy,zoom), lon: xToLon(cx,zoom) };
+    if(followMode){ followMode=false; document.getElementById('btnFollow').classList.remove('on'); }
+    renderMap();
+  }
 });
-svg.addEventListener('pointerup', e=>{
+function endPointer(e){
+  activePointers.delete(e.pointerId);
+  if(pinch && activePointers.size<2){ finalizePinch(); return; }
   dragging=false;
   if(!moved){
     const rect=svg.getBoundingClientRect();
@@ -866,7 +917,9 @@ svg.addEventListener('pointerup', e=>{
       addPoint(lat,lon,null,true);
     }
   }
-});
+}
+svg.addEventListener('pointerup', endPointer);
+svg.addEventListener('pointercancel', endPointer);
 
 document.getElementById('btnFollow').addEventListener('click', e=>{
   followMode=!followMode;
@@ -1219,6 +1272,55 @@ document.getElementById('btnExportZip').addEventListener('click', async ()=>{
   downloadBytes('mission_terrain_'+Date.now()+'.zip', zipBytes, 'application/zip');
   if(missing) toast(missing+' média(s) déjà téléchargé(s) individuellement — non ré-inclus dans ce zip');
 });
+
+/* =========================================================
+   10B. RECHERCHE (points relevés + sites réseau)
+   ========================================================= */
+function renderSearchResults(q){
+  const query=q.trim().toLowerCase();
+  const wrap=document.getElementById('searchResultsList');
+  if(!query){ wrap.innerHTML='<div class="empty-list">Tape le nom d\'un point relevé ou d\'un site réseau.</div>'; return; }
+  const pointMatches = points.filter(p=>p.name.toLowerCase().includes(query));
+  const siteMatches = NETSITES.filter(s=>s.name.toLowerCase().includes(query));
+  if(!pointMatches.length && !siteMatches.length){ wrap.innerHTML='<div class="empty-list">Aucun résultat pour «\u00A0'+q+'\u00A0».</div>'; return; }
+  let html='';
+  if(pointMatches.length){
+    html += pointMatches.map(p=>`<div class="point-row" data-type="point" data-id="${p.id}">
+        <div class="num">📍</div>
+        <div class="body"><div class="name">${p.name}</div><div class="meta">Point relevé · ${fmtTime(p.ts)}</div></div>
+      </div>`).join('');
+  }
+  if(siteMatches.length){
+    html += siteMatches.map(s=>{
+      const col=STATUT_COLOR[s.statut];
+      const markerCls = s.statut==='PG'?'pg':(s.statut==='Etude'?'etude':'');
+      let meta = STATUT_LABEL[s.statut]+([s.commune,s.departement,s.region].filter(Boolean).join(' · ')?' · '+[s.commune,s.departement,s.region].filter(Boolean).join(' · '):'');
+      return `<div class="site-row" data-type="site" data-id="${s.id}">
+        <div class="marker ${markerCls}" style="background:${s.statut==='Etude'?'transparent':col};${s.statut==='Etude'?'color:'+col+';':''}"></div>
+        <div class="body"><div class="name">${s.name}</div><div class="meta">${meta}</div></div>
+      </div>`;
+    }).join('');
+  }
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('[data-id]').forEach(row=>row.addEventListener('click', ()=>{
+    const id=row.dataset.id, type=row.dataset.type;
+    closeSearch();
+    followMode=false; document.getElementById('btnFollow').classList.remove('on');
+    if(type==='point'){
+      const p=points.find(x=>x.id===id);
+      if(p){ center={lat:p.lat,lon:p.lon}; zoom=Math.max(zoom,17); openEditor(id); }
+    } else {
+      const s=NETSITES.find(x=>x.id===id);
+      if(s){ center={lat:s.lat,lon:s.lon}; zoom=Math.max(zoom,17); openSiteDetail(id); }
+    }
+  }));
+}
+const searchOverlay=document.getElementById('searchOverlay'), searchInput=document.getElementById('searchInput');
+function openSearch(){ searchOverlay.classList.add('open'); searchInput.value=''; renderSearchResults(''); setTimeout(()=>searchInput.focus(),80); }
+function closeSearch(){ searchOverlay.classList.remove('open'); }
+document.getElementById('btnSearch').addEventListener('click', openSearch);
+document.getElementById('btnCloseSearch').addEventListener('click', closeSearch);
+searchInput.addEventListener('input', e=>renderSearchResults(e.target.value));
 
 /* =========================================================
    11. DÉMARRAGE
