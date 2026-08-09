@@ -63,7 +63,7 @@ header .sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text-mute);
 .gpsbadge.error{color:var(--red);}
 .gpsbadge b{display:block;font-size:9px;color:var(--text-mute);text-transform:uppercase;font-family:var(--font-body);font-weight:700;letter-spacing:.3px;margin-bottom:1px;}
 
-.quicklayers{position:absolute; top:54px; left:10px; z-index:20; display:flex; gap:6px;}
+.quicklayers{position:absolute; top:calc(100px + var(--safe-t)); left:10px; z-index:20; display:flex; gap:6px;}
 .quicklayers button{
   background:rgba(255,255,255,.95); border:1px solid var(--border); border-radius:8px;
   padding:5px 9px; font-size:10.5px; font-weight:700; color:var(--text-mute);
