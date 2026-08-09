@@ -598,7 +598,7 @@ function importTypoRows(rows){
     if(nomSecteur){
       const azRaw=g.rowAny(r,AZ_ALIASES);
       const sec = { id:'S'+(bySite[nomSite].sectors.length+1), name:nomSecteur,
-        typo2G:g.row(r,'Typo2G'), typo3G:g.row(r,'Typo3G'), typo4G:g.row(r,'Typo4G'), typo5G:g.row(r,'Typo5G'), typo:g.row(r,'Typo') };
+        typo2G:g.row(r,'Typo2G'), typo3G:g.row(r,'Typo3G'), typo4G:g.row(r,'Typo4G'), typo5G:g.row(r,'Typo5G'), typo:g.row(r,'Typo'), hba:g.row(r,'HBA') };
       const azF=toFloatSmart(azRaw);
       if(!isNaN(azF)){ sec.azimuth=azF; sec.azimuthApprox=false; }
       else { sec.azimuth=0; sec.azimuthApprox=true; }
@@ -1206,6 +1206,7 @@ function openSiteDetail(id){
           <span style="font-family:var(--font-mono);font-weight:700;font-size:13px;">${sec.azimuth}°${sec.azimuthApprox?' <small style="color:var(--amber);">estimé</small>':''}${mimo}</span>
           <span style="font-size:10px;color:var(--text-mute);font-family:var(--font-mono);">${sec.name}</span>
         </div>
+        ${sec.hba? `<div style="font-size:10.5px;color:var(--text-mute);margin-bottom:5px;">HBA : ${sec.hba} m</div>`:''}
         ${techLine('2G',sec.typo2G)}${techLine('3G',sec.typo3G)}${techLine('4G',sec.typo4G)}${techLine('5G',sec.typo5G)}
       </div>`;
     }).join('');
