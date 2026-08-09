@@ -1464,11 +1464,14 @@ async function handleCellTableFile(file){
   catch(e){ toast('Import impossible : '+e.message); }
 }
 
-function renderCellSearchResults(matches){
+function renderCellSearchResults(matches, fallback){
   const wrap = document.getElementById('cellSearchResults');
-  if(!matches.length){ wrap.innerHTML = '<div class="empty-list">Aucune cellule trouvée pour ces critères.</div>'; return; }
+  if(!matches.length){ wrap.innerHTML = '<div class="empty-list">Aucune cellule trouvée, même en repli sur l\'eNodeB seul.</div>'; return; }
   const shown = matches.slice(0,15);
-  wrap.innerHTML = shown.map(m=>{
+  let html = fallback
+    ? `<div style="font-size:11px;color:#a9720a;background:#fff6e0;border-radius:8px;padding:6px 10px;margin-bottom:8px;">⚠ Pas de correspondance exacte PCI/EARFCN — cellules de cet eNodeB affichées à la place.</div>`
+    : '';
+  html += shown.map(m=>{
     const rowsHtml = Object.entries(m.raw).filter(([k,v])=>v!=='').map(([k,v])=>
       `<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px dashed var(--border);font-size:11.5px;">
         <span style="color:var(--text-mute);flex:none;">${k}</span>
@@ -1477,6 +1480,7 @@ function renderCellSearchResults(matches){
     ).join('');
     return `<div style="border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:var(--bg-soft);">${rowsHtml}</div>`;
   }).join('') + (matches.length>shown.length ? `<div class="empty-list">+ ${matches.length-shown.length} autre(s) résultat(s) — affine ta recherche.</div>` : '');
+  wrap.innerHTML = html;
 }
 function searchCell(){
   if(!CELL_TABLE.length){ toast('Importe d\'abord le fichier active_4G_cells'); return; }
@@ -1484,10 +1488,15 @@ function searchCell(){
   const pci=normId(document.getElementById('cellSearchPci').value);
   const earfcn=normId(document.getElementById('cellSearchEarfcn').value);
   if(!enb && !pci && !earfcn){ toast('Renseigne au moins un des trois champs'); return; }
-  const matches = CELL_TABLE.filter(c=>
+  let matches = CELL_TABLE.filter(c=>
     (!enb || c.enodeb===enb) && (!pci || c.pci===pci) && (!earfcn || c.earfcn===earfcn)
   );
-  renderCellSearchResults(matches);
+  let fallback = false;
+  if(!matches.length && enb && (pci || earfcn)){
+    matches = CELL_TABLE.filter(c=>c.enodeb===enb);
+    fallback = matches.length>0;
+  }
+  renderCellSearchResults(matches, fallback);
 }
 document.getElementById('btnImportCellTable').addEventListener('click', ()=>document.getElementById('fileInputCellTable').click());
 document.getElementById('fileInputCellTable').addEventListener('change', e=>{
