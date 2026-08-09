@@ -1,4 +1,4 @@
-const CACHE_NAME = 'terrain-notes-v1';
+const CACHE_NAME = 'terrain-notes-v2';
 const APP_SHELL = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', e => {
@@ -23,16 +23,15 @@ self.addEventListener('fetch', e => {
   if(url.origin !== location.origin){ return; }
   if(e.request.method !== 'GET'){ return; }
 
+  // Réseau prioritaire : on veut toujours la dernière version quand il y a du signal.
+  // Le cache ne sert que de secours hors-ligne.
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const fetchPromise = fetch(e.request).then(resp => {
-        if(resp && resp.ok){
-          const copy = resp.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, copy)).catch(()=>{});
-        }
-        return resp;
-      }).catch(() => cached);
-      return cached || fetchPromise;
-    })
+    fetch(e.request).then(resp => {
+      if(resp && resp.ok){
+        const copy = resp.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(e.request, copy)).catch(()=>{});
+      }
+      return resp;
+    }).catch(() => caches.match(e.request))
   );
 });
