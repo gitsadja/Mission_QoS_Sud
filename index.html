@@ -1459,9 +1459,38 @@ function buildCellTableFromRows(rows){
   return table;
 }
 
+function resolveColName(g, headers, aliases){
+  for(const a of aliases){
+    const k = normKey(a);
+    if(g.idx[k]!==undefined) return headers[g.idx[k]];
+  }
+  return null;
+}
+
 // Stocke les lignes BRUTES (tableaux, pas d'objets) pour rester compact même à 35 000+ lignes.
+// Si la version complète dépasse le quota du navigateur, on retombe automatiquement sur un
+// jeu de colonnes essentielles (bien plus compact) plutôt que d'abandonner la sauvegarde.
 async function persistCellTable(rows){
-  return await Store.set(CELL_TABLE_STORE_KEY, { headers: rows[0], rows: rows.slice(1), savedAt: Date.now() });
+  const full = { headers: rows[0], rows: rows.slice(1), savedAt: Date.now() };
+  let ok = await Store.set(CELL_TABLE_STORE_KEY, full);
+  if(ok) return { ok:true, trimmed:false };
+
+  const g = rowsToGetter(rows);
+  const headers = rows[0];
+  const NAME_SITE_ALIASES=['NOM SITE','Site Name','SITE','Nom du site'];
+  const NAME_CELL_ALIASES=['NOM CELLULE','Cell Name','CellName','Nom de la cellule'];
+  const TAC_ALIASES=['TAC'];
+  const keepCols=[];
+  [NAME_SITE_ALIASES,NAME_CELL_ALIASES,ENODEB_ALIASES,PCI_ALIASES,EARFCN_ALIASES,TAC_ALIASES].forEach(aliasList=>{
+    const name = resolveColName(g, headers, aliasList);
+    if(name && !keepCols.includes(name)) keepCols.push(name);
+  });
+  if(!keepCols.length) return { ok:false, trimmed:false };
+  const keepIdx = keepCols.map(c=>headers.indexOf(c));
+  const trimmedRows = rows.slice(1).map(r=>keepIdx.map(i=>r[i]!==undefined?r[i]:''));
+  const trimmed = { headers:keepCols, rows:trimmedRows, savedAt:Date.now(), trimmed:true };
+  ok = await Store.set(CELL_TABLE_STORE_KEY, trimmed);
+  return { ok, trimmed:true };
 }
 async function restoreCellTable(){
   const saved = await Store.get(CELL_TABLE_STORE_KEY);
@@ -1469,7 +1498,7 @@ async function restoreCellTable(){
     const table = buildCellTableFromRows([saved.headers, ...saved.rows]);
     if(table && table.length){
       CELL_TABLE = table;
-      document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) (mémorisées depuis la dernière session).';
+      document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) (mémorisées depuis la dernière session'+(saved.trimmed?' — version allégée':'')+').';
     }
   }
 }
@@ -1481,9 +1510,13 @@ function importCellTable(rows){
   CELL_TABLE = table;
   document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s).';
   toast(table.length+' cellule(s) chargée(s) depuis le fichier.');
-  persistCellTable(rows).then(ok=>{
-    if(ok) document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) — mémorisées pour la prochaine session.';
-    else toast('Chargé en mémoire, mais trop volumineux pour être mémorisé — à réimporter à la prochaine ouverture.');
+  persistCellTable(rows).then(res=>{
+    if(res.ok && !res.trimmed) document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) — mémorisées pour la prochaine session.';
+    else if(res.ok && res.trimmed){
+      document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) — mémorisées en version allégée (colonnes essentielles) pour la prochaine session.';
+      toast('Fichier trop volumineux pour être mémorisé en intégralité — seules les colonnes essentielles (site, cellule, eNodeB, PCI, EARFCN) sont conservées entre les sessions.');
+    }
+    else toast('Chargé en mémoire, mais trop volumineux pour être mémorisé même en version allégée — à réimporter à chaque ouverture.');
   });
 }
 async function handleCellTableFile(file){
