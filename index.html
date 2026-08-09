@@ -321,8 +321,11 @@ textarea#pointNotes{
 
   <div id="searchOverlay">
     <div class="editor-head">
-      <input id="searchInput" type="text" placeholder="Nom d'un point ou d'un site…" style="flex:1;min-width:0;border:none;background:var(--bg-soft);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--text);">
+      <input id="searchInput" type="text" placeholder="Nom, lieu, ou coordonnées (14.71, -17.46)…" style="flex:1;min-width:0;border:none;background:var(--bg-soft);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--text);">
       <button id="btnCloseSearch">✕</button>
+    </div>
+    <div style="padding:0 16px 10px;">
+      <button id="btnGeocode" class="btn" style="margin:0;">🌍 Chercher ce lieu sur la carte</button>
     </div>
     <div class="editor-body" id="searchResultsList"></div>
   </div>
@@ -1529,34 +1532,67 @@ document.getElementById('fileInputCellTable').addEventListener('change', e=>{
 document.getElementById('btnSearchCell').addEventListener('click', searchCell);
 
 /* =========================================================
-   10B. RECHERCHE (points relevés + sites réseau)
+   10B. RECHERCHE (points relevés + sites réseau + coordonnées + lieu)
    ========================================================= */
+function parseCoordString(s){
+  const t=(s||'').trim();
+  if(!t) return null;
+  const m = t.match(/^(-?\d+(?:[.,]\d+)?)\s*[,;\s]\s*(-?\d+(?:[.,]\d+)?)$/);
+  if(!m) return null;
+  const lat=parseFloat(m[1].replace(',','.')), lon=parseFloat(m[2].replace(',','.'));
+  if(isNaN(lat)||isNaN(lon)) return null;
+  if(lat<-90||lat>90||lon<-180||lon>180) return null;
+  return [lat,lon];
+}
+function goToCoords(lat,lon,label){
+  closeSearch();
+  followMode=false; document.getElementById('btnFollow').classList.remove('on');
+  cancelPointConfirm();
+  center={lat,lon}; zoom=Math.max(zoom,16);
+  renderMap();
+  toast(label || ('Carte centrée sur '+lat.toFixed(5)+', '+lon.toFixed(5)));
+}
+
 function renderSearchResults(q){
   const query=q.trim().toLowerCase();
   const wrap=document.getElementById('searchResultsList');
-  if(!query){ wrap.innerHTML='<div class="empty-list">Tape le nom d\'un point relevé ou d\'un site réseau.</div>'; return; }
-  const pointMatches = points.filter(p=>p.name.toLowerCase().includes(query));
-  const siteMatches = NETSITES.filter(s=>s.name.toLowerCase().includes(query));
-  if(!pointMatches.length && !siteMatches.length){ wrap.innerHTML='<div class="empty-list">Aucun résultat pour «\u00A0'+q+'\u00A0».</div>'; return; }
+  const coord = parseCoordString(q);
   let html='';
-  if(pointMatches.length){
-    html += pointMatches.map(p=>`<div class="point-row" data-type="point" data-id="${p.id}">
-        <div class="num">📍</div>
-        <div class="body"><div class="name">${p.name}</div><div class="meta">Point relevé · ${fmtTime(p.ts)}</div></div>
-      </div>`).join('');
+  if(coord){
+    html += `<div class="point-row" data-coord="1" style="border-color:var(--orange);">
+      <div class="num" style="background:var(--cyan);">📍</div>
+      <div class="body"><div class="name">Aller à ces coordonnées</div><div class="meta">${coord[0].toFixed(6)}, ${coord[1].toFixed(6)}</div></div>
+    </div>`;
   }
-  if(siteMatches.length){
-    html += siteMatches.map(s=>{
-      const col=STATUT_COLOR[s.statut];
-      const markerCls = s.statut==='PG'?'pg':(s.statut==='Etude'?'etude':'');
-      let meta = STATUT_LABEL[s.statut]+([s.commune,s.departement,s.region].filter(Boolean).join(' · ')?' · '+[s.commune,s.departement,s.region].filter(Boolean).join(' · '):'');
-      return `<div class="site-row" data-type="site" data-id="${s.id}">
-        <div class="marker ${markerCls}" style="background:${s.statut==='Etude'?'transparent':col};${s.statut==='Etude'?'color:'+col+';':''}"></div>
-        <div class="body"><div class="name">${s.name}</div><div class="meta">${meta}</div></div>
-      </div>`;
-    }).join('');
+  if(!query){
+    wrap.innerHTML = html || '<div class="empty-list">Tape un nom, un lieu, ou des coordonnées (ex. 14.7167, -17.4677).</div>';
+  } else {
+    const pointMatches = points.filter(p=>p.name.toLowerCase().includes(query));
+    const siteMatches = NETSITES.filter(s=>s.name.toLowerCase().includes(query));
+    if(pointMatches.length){
+      html += pointMatches.map(p=>`<div class="point-row" data-type="point" data-id="${p.id}">
+          <div class="num">📍</div>
+          <div class="body"><div class="name">${p.name}</div><div class="meta">Point relevé · ${fmtTime(p.ts)}</div></div>
+        </div>`).join('');
+    }
+    if(siteMatches.length){
+      html += siteMatches.map(s=>{
+        const col=STATUT_COLOR[s.statut];
+        const markerCls = s.statut==='PG'?'pg':(s.statut==='Etude'?'etude':'');
+        let meta = STATUT_LABEL[s.statut]+([s.commune,s.departement,s.region].filter(Boolean).join(' · ')?' · '+[s.commune,s.departement,s.region].filter(Boolean).join(' · '):'');
+        return `<div class="site-row" data-type="site" data-id="${s.id}">
+          <div class="marker ${markerCls}" style="background:${s.statut==='Etude'?'transparent':col};${s.statut==='Etude'?'color:'+col+';':''}"></div>
+          <div class="body"><div class="name">${s.name}</div><div class="meta">${meta}</div></div>
+        </div>`;
+      }).join('');
+    }
+    if(!html){ html = `<div class="empty-list">Aucun point/site pour «\u00A0${q}\u00A0». Essaie «\u00A0🌍 Chercher ce lieu\u00A0» pour une localité, ou saisis des coordonnées.</div>`; }
+    wrap.innerHTML = html;
   }
-  wrap.innerHTML = html;
+
+  const coordRow = wrap.querySelector('[data-coord]');
+  if(coordRow) coordRow.addEventListener('click', ()=>goToCoords(coord[0], coord[1]));
+
   wrap.querySelectorAll('[data-id]').forEach(row=>row.addEventListener('click', ()=>{
     const id=row.dataset.id, type=row.dataset.type;
     closeSearch();
@@ -1570,12 +1606,49 @@ function renderSearchResults(q){
     }
   }));
 }
+
+let geocoding=false;
+async function geocodePlace(){
+  const q = searchInput.value.trim();
+  if(!q){ toast('Tape un nom de lieu d\'abord'); return; }
+  if(parseCoordString(q)){ toast('Ceci ressemble déjà à des coordonnées — touche le résultat ci-dessus'); return; }
+  if(geocoding) return;
+  geocoding=true;
+  const wrap=document.getElementById('searchResultsList');
+  wrap.innerHTML = '<div class="empty-list">Recherche du lieu…</div>';
+  try{
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=fr&viewbox=-17.9,16.7,-11.3,12.0&q=' + encodeURIComponent(q);
+    const resp = await fetch(url);
+    if(!resp.ok) throw new Error('Réponse invalide du service de recherche');
+    const data = await resp.json();
+    renderPlaceResults(data, q);
+  }catch(e){
+    wrap.innerHTML = '<div class="empty-list">Recherche de lieu indisponible — vérifie ta connexion internet.</div>';
+  }finally{
+    geocoding=false;
+  }
+}
+function renderPlaceResults(data, q){
+  const wrap=document.getElementById('searchResultsList');
+  if(!data || !data.length){ wrap.innerHTML = `<div class="empty-list">Aucun lieu trouvé pour «\u00A0${q}\u00A0».</div>`; return; }
+  wrap.innerHTML = data.map((r,i)=>`<div class="site-row" data-place="${i}">
+      <div class="marker" style="background:var(--cyan);">🌍</div>
+      <div class="body"><div class="name">${r.display_name.split(',')[0]}</div><div class="meta">${r.display_name}</div></div>
+    </div>`).join('');
+  wrap.querySelectorAll('[data-place]').forEach(row=>row.addEventListener('click', ()=>{
+    const r = data[row.dataset.place];
+    goToCoords(parseFloat(r.lat), parseFloat(r.lon), r.display_name.split(',')[0]);
+  }));
+}
+
 const searchOverlay=document.getElementById('searchOverlay'), searchInput=document.getElementById('searchInput');
 function openSearch(){ cancelPointConfirm(); searchOverlay.classList.add('open'); searchInput.value=''; renderSearchResults(''); setTimeout(()=>searchInput.focus(),80); }
 function closeSearch(){ searchOverlay.classList.remove('open'); }
 document.getElementById('btnSearch').addEventListener('click', openSearch);
 document.getElementById('btnCloseSearch').addEventListener('click', closeSearch);
+document.getElementById('btnGeocode').addEventListener('click', geocodePlace);
 searchInput.addEventListener('input', e=>renderSearchResults(e.target.value));
+searchInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); geocodePlace(); } });
 
 /* =========================================================
    11. DÉMARRAGE
