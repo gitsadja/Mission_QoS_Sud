@@ -282,7 +282,7 @@ textarea#pointNotes{
 
     <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
       <h3 style="font-family:var(--font-head);font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-mute);margin:0 0 8px;">📶 Identifier une cellule</h3>
-      <p style="font-size:10.5px;color:var(--text-mute);margin:-2px 0 8px;line-height:1.5;">Importe le fichier <code>active_4G_cells</code> (Excel), puis renseigne eNodeB + PCI + EARFCN pour retrouver le nom de la cellule. Table non sauvegardée entre les sessions — à réimporter à l'ouverture.</p>
+      <p style="font-size:10.5px;color:var(--text-mute);margin:-2px 0 8px;line-height:1.5;">Importe le fichier <code>active_4G_cells</code> (Excel), puis renseigne eNodeB + PCI + EARFCN pour retrouver le nom de la cellule. Reste mémorisé sur ce téléphone d'une session à l'autre — à réimporter seulement après une mise à jour du fichier.</p>
       <button class="btn" id="btnImportCellTable">📥 Importer active_4G_cells (Excel)</button>
       <input type="file" id="fileInputCellTable" accept=".xlsx,.csv" style="display:none;">
       <div id="cellTableStatus" style="font-size:11px;color:var(--text-mute);margin-bottom:8px;"></div>
@@ -685,9 +685,9 @@ const Store = {
   },
   async set(key,value){
     if(typeof window.storage!=='undefined' && window.storage){
-      try{ await window.storage.set(key, JSON.stringify(value), false); return; }catch(e){}
+      try{ await window.storage.set(key, JSON.stringify(value), false); return true; }catch(e){}
     }
-    try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){}
+    try{ localStorage.setItem(key, JSON.stringify(value)); return true; }catch(e){ return false; }
   }
 };
 const STORE_KEY = 'terrain_notes_points_v1';
@@ -1417,7 +1417,8 @@ document.getElementById('btnExportZip').addEventListener('click', async ()=>{
 /* =========================================================
    10A. IDENTIFICATION DE CELLULE — eNodeB + PCI + EARFCN -> nom de cellule
    ========================================================= */
-let CELL_TABLE = []; // {raw:{...toutes les colonnes...}, enodeb, pci, earfcn} — session uniquement, non persisté (fichier potentiellement volumineux)
+let CELL_TABLE = []; // {raw:{...toutes les colonnes...}, enodeb, pci, earfcn}
+const CELL_TABLE_STORE_KEY = 'terrain_notes_celltable_v1';
 const ENODEB_ALIASES=['eNodeB','eNodeBId','ENODEB','ENB','ENBID','ENODEBID','eNB ID','ENODEB ID','GNBID','GNODEB'];
 const PCI_ALIASES=['PCI','Pci','Physical Cell ID','Physical cell ID','PhysicalCellId'];
 const EARFCN_ALIASES=['EARFCN','Earfcn','DLEARFCN','DL EARFCN','ARFCN'];
@@ -1434,13 +1435,10 @@ function normId(s){
   return t.toLowerCase();
 }
 
-function importCellTable(rows){
-  if(rows.length<2){ toast('Fichier vide ou invalide'); return; }
+// Construit la table en mémoire à partir de lignes brutes (1ère ligne = en-têtes). Ne persiste rien.
+function buildCellTableFromRows(rows){
   const g=rowsToGetter(rows);
-  if(!anyColPresent(g,ENODEB_ALIASES) || !anyColPresent(g,PCI_ALIASES) || !anyColPresent(g,EARFCN_ALIASES)){
-    toast('Colonnes eNodeB / PCI / EARFCN introuvables dans ce fichier');
-    return;
-  }
+  if(!anyColPresent(g,ENODEB_ALIASES) || !anyColPresent(g,PCI_ALIASES) || !anyColPresent(g,EARFCN_ALIASES)) return null;
   const headers = rows[0];
   const table = [];
   for(let i=1;i<rows.length;i++){
@@ -1455,9 +1453,35 @@ function importCellTable(rows){
       earfcn: normId(g.rowAny(r, EARFCN_ALIASES))
     });
   }
+  return table;
+}
+
+// Stocke les lignes BRUTES (tableaux, pas d'objets) pour rester compact même à 35 000+ lignes.
+async function persistCellTable(rows){
+  return await Store.set(CELL_TABLE_STORE_KEY, { headers: rows[0], rows: rows.slice(1), savedAt: Date.now() });
+}
+async function restoreCellTable(){
+  const saved = await Store.get(CELL_TABLE_STORE_KEY);
+  if(saved && Array.isArray(saved.headers) && Array.isArray(saved.rows)){
+    const table = buildCellTableFromRows([saved.headers, ...saved.rows]);
+    if(table && table.length){
+      CELL_TABLE = table;
+      document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) (mémorisées depuis la dernière session).';
+    }
+  }
+}
+
+function importCellTable(rows){
+  if(rows.length<2){ toast('Fichier vide ou invalide'); return; }
+  const table = buildCellTableFromRows(rows);
+  if(!table){ toast('Colonnes eNodeB / PCI / EARFCN introuvables dans ce fichier'); return; }
   CELL_TABLE = table;
   document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s).';
   toast(table.length+' cellule(s) chargée(s) depuis le fichier.');
+  persistCellTable(rows).then(ok=>{
+    if(ok) document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) — mémorisées pour la prochaine session.';
+    else toast('Chargé en mémoire, mais trop volumineux pour être mémorisé — à réimporter à la prochaine ouverture.');
+  });
 }
 async function handleCellTableFile(file){
   try{ importCellTable(await readRowsFromFile(file)); }
@@ -1565,6 +1589,7 @@ if('serviceWorker' in navigator){
 (async function init(){
   await restore();
   await restoreSites();
+  await restoreCellTable();
   updateAttribution();
   renderAll();
   renderSitesAll();
