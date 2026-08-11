@@ -223,7 +223,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.08.09</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.08.10b</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -787,11 +787,23 @@ function cycleBaseLayer(){
    ========================================================= */
 const gpsBadge=document.getElementById('gpsBadge');
 const btnMark=document.getElementById('btnMark');
+let bestRecentPos = null;           // meilleure lecture (précision la plus fine) sur la fenêtre récente
+const BEST_POS_MAX_AGE_MS = 20000;  // au-delà, on ne fait plus confiance à une "bonne" lecture ancienne
+
+function accuracyQuality(acc){
+  if(acc<=15) return { label:'bonne', color:'#16A34A' };
+  if(acc<=40) return { label:'moyenne', color:'#E8A317' };
+  return { label:'faible', color:'#DC2626' };
+}
 
 function onGeoSuccess(pos){
   currentPos = { lat:pos.coords.latitude, lon:pos.coords.longitude, accuracy:pos.coords.accuracy, ts:Date.now() };
+  if(!bestRecentPos || currentPos.accuracy<=bestRecentPos.accuracy || (Date.now()-bestRecentPos.ts)>BEST_POS_MAX_AGE_MS){
+    bestRecentPos = currentPos;
+  }
   gpsBadge.classList.remove('searching','error');
-  gpsBadge.innerHTML = `<b>Position</b>${currentPos.lat.toFixed(5)}, ${currentPos.lon.toFixed(5)} · ±${Math.round(currentPos.accuracy)} m`;
+  const q = accuracyQuality(currentPos.accuracy);
+  gpsBadge.innerHTML = `<b>Position</b><span style="color:${q.color};font-weight:700;">±${Math.round(currentPos.accuracy)} m (${q.label})</span> · ${currentPos.lat.toFixed(5)}, ${currentPos.lon.toFixed(5)}`;
   btnMark.disabled=false;
   if(!center) center = { lat:currentPos.lat, lon:currentPos.lon };
   if(followMode) center = { lat:currentPos.lat, lon:currentPos.lon };
@@ -802,11 +814,27 @@ function onGeoError(err){
   gpsBadge.innerHTML = `<b>Position indisponible</b>${err.message||'Vérifiez les autorisations de localisation'}`;
   if(!center) center = { lat:14.7167, lon:-17.4677 }; // repli neutre (Dakar) tant qu'aucune position n'est connue
 }
+let wakeLock = null;
+async function requestWakeLock(){
+  try{
+    if('wakeLock' in navigator){
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', ()=>{ wakeLock=null; });
+    }
+  }catch(e){ /* pas grave si indisponible ou refusé (ex. batterie faible) */ }
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible' && !wakeLock) requestWakeLock();
+});
+
 function startGeo(){
   if(!('geolocation' in navigator)){ onGeoError({message:'Géolocalisation non supportée par ce navigateur.'}); return; }
   gpsBadge.classList.add('searching');
+  bestRecentPos = null;
   if(watchId!==null) navigator.geolocation.clearWatch(watchId);
-  watchId = navigator.geolocation.watchPosition(onGeoSuccess, onGeoError, { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
+  // maximumAge:0 force une lecture fraîche à chaque mise à jour plutôt qu'une valeur mise en cache par l'OS
+  watchId = navigator.geolocation.watchPosition(onGeoSuccess, onGeoError, { enableHighAccuracy:true, maximumAge:0, timeout:20000 });
+  requestWakeLock(); // écran allumé = l'OS ne met pas le GPS en veille pendant la mission
 }
 
 /* =========================================================
@@ -887,7 +915,8 @@ function renderMap(){
   if(currentPos){
     const [cx,cy] = project(currentPos.lat, currentPos.lon, W, H);
     const rAcc = Math.max(6, currentPos.accuracy/metersPerPixel(center.lat,zoom));
-    parts.push(`<circle cx="${cx}" cy="${cy}" r="${rAcc}" fill="#0098A6" fill-opacity="0.12" stroke="#0098A6" stroke-width="1" stroke-dasharray="3,2" pointer-events="none"/>`);
+    const qc = accuracyQuality(currentPos.accuracy).color;
+    parts.push(`<circle cx="${cx}" cy="${cy}" r="${rAcc}" fill="${qc}" fill-opacity="0.12" stroke="${qc}" stroke-width="1" stroke-dasharray="3,2" pointer-events="none"/>`);
     parts.push(`<circle cx="${cx}" cy="${cy}" r="13" fill="#0098A6" fill-opacity="0.22" pointer-events="none"/>`);
     parts.push(`<circle cx="${cx}" cy="${cy}" r="8" fill="#0098A6" stroke="#fff" stroke-width="3" pointer-events="none"/>`);
   }
@@ -1083,7 +1112,9 @@ function addPoint(lat, lon, accuracy, openAfter){
 }
 btnMark.addEventListener('click', ()=>{
   if(!currentPos){ toast('Position GPS non disponible pour le moment'); return; }
-  addPoint(currentPos.lat, currentPos.lon, currentPos.accuracy, true);
+  const useBest = (bestRecentPos && (Date.now()-bestRecentPos.ts)<BEST_POS_MAX_AGE_MS) ? bestRecentPos : currentPos;
+  if(useBest.accuracy>40) toast('Précision faible (±'+Math.round(useBest.accuracy)+' m) — le point est quand même marqué');
+  addPoint(useBest.lat, useBest.lon, useBest.accuracy, true);
 });
 
 function deletePoint(id){
