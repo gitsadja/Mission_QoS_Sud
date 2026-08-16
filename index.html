@@ -48,6 +48,12 @@ header .sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text-mute);
 .hdr-stats{margin-left:auto;display:flex;gap:6px;}
 .hdr-stat{background:var(--bg-soft);border:1px solid var(--border);border-radius:8px;padding:3px 8px;text-align:center;}
 .hdr-stat b{display:block;font-family:var(--font-mono);font-size:13px;line-height:1.1;}
+.project-bar{width:100%;border:none;border-bottom:1px solid var(--border);background:var(--bg-soft);
+  display:flex;align-items:center;gap:6px;padding:7px 14px;font-family:var(--font-mono);font-size:11.5px;color:var(--text);flex:none;z-index:29;}
+.project-bar-ico{font-size:13px;}
+.project-bar-label{flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.project-bar-label b{color:var(--orange-dark);font-weight:700;}
+.project-bar-chev{color:var(--text-mute);}
 .hdr-stat small{font-size:8px;color:var(--text-mute);text-transform:uppercase;}
 
 #mapWrap{position:relative;flex:1;min-height:0;background:radial-gradient(circle at 50% 40%,#fffaf5 0%,var(--bg-softer) 75%);overflow:hidden;}
@@ -55,13 +61,13 @@ header .sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text-mute);
 
 .gpsbadge{
   position:absolute; top:10px; left:10px; z-index:20;
-  background:rgba(255,255,255,.95); border:1px solid var(--border); border-radius:9px;
-  padding:6px 10px; font-family:var(--font-mono); font-size:10.5px; color:var(--text-soft);
-  box-shadow:0 3px 10px rgba(13,15,20,.08); max-width:62%;
+  background:rgba(255,255,255,.95); border:1px solid var(--border); border-radius:8px;
+  padding:4px 8px; font-family:var(--font-mono); font-size:9.5px; color:var(--text-soft);
+  box-shadow:0 3px 10px rgba(13,15,20,.08); max-width:62%; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .gpsbadge.searching{color:var(--amber);}
 .gpsbadge.error{color:var(--red);}
-.gpsbadge b{display:block;font-size:9px;color:var(--text-mute);text-transform:uppercase;font-family:var(--font-body);font-weight:700;letter-spacing:.3px;margin-bottom:1px;}
+.gpsbadge b{font-weight:700;color:var(--text-mute);margin-right:3px;}
 
 .quicklayers{position:absolute; top:calc(100px + var(--safe-t)); left:10px; z-index:20; display:flex; gap:6px;}
 .quicklayers button{
@@ -157,10 +163,11 @@ header .sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text-mute);
 .empty-list{padding:30px 16px;text-align:center;color:var(--text-mute);font-size:13px;}
 
 /* ---------- editor overlay ---------- */
-#editorOverlay, #siteDetailOverlay, #searchOverlay{
+#editorOverlay, #siteDetailOverlay, #searchOverlay, #projectOverlay, #importSummaryOverlay{
   position:fixed; inset:0; background:var(--bg); z-index:60; display:none; flex-direction:column;
 }
-#editorOverlay.open, #siteDetailOverlay.open, #searchOverlay.open{display:flex;}
+#editorOverlay.open, #siteDetailOverlay.open, #searchOverlay.open, #projectOverlay.open{display:flex;}
+#importSummaryOverlay.open{display:flex; z-index:70;}
 .editor-head{
   display:flex; align-items:center; gap:10px; padding:calc(12px + var(--safe-t)) 14px 12px;
   border-bottom:1px solid var(--border);
@@ -172,6 +179,16 @@ header .sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text-mute);
 .editor-head button{border:none;background:var(--bg-soft);width:34px;height:34px;border-radius:9px;font-size:16px;color:var(--text-mute);flex:none;}
 .editor-body{flex:1;overflow-y:auto;padding:14px 16px calc(24px + var(--safe-b));}
 .editor-meta{font-family:var(--font-mono);font-size:11px;color:var(--text-mute);background:var(--bg-soft);border-radius:10px;padding:8px 12px;margin-bottom:14px;line-height:1.7;}
+.project-row{display:flex;align-items:center;gap:10px;padding:12px;border-radius:12px;margin-bottom:8px;background:var(--bg-soft);border:2px solid transparent;}
+.project-row.active{border-color:var(--orange);background:#fff3ea;}
+.project-row .radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);flex:none;background:#fff;}
+.project-row.active .radio{border-color:var(--orange);background:radial-gradient(circle,var(--orange) 0 42%, transparent 44%);}
+.project-row .pbody{flex:1;min-width:0;}
+.project-row .pname{font-weight:700;font-size:14px;}
+.project-row .pmeta{font-family:var(--font-mono);font-size:10px;color:var(--text-mute);margin-top:2px;}
+.project-row .pactions{display:flex;gap:4px;flex:none;}
+.project-row .pactions button{border:none;background:#fff;width:30px;height:30px;border-radius:8px;font-size:13px;color:var(--text-mute);}
+.import-summary-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed var(--border);font-size:13px;}
 .editor-meta .warn{color:#a9720a;}
 label.field-label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-mute);font-weight:700;margin:0 0 6px;}
 textarea#pointNotes{
@@ -196,6 +213,7 @@ textarea#pointNotes{
 .btn{border:none;border-radius:11px;padding:13px 16px;font-size:14px;font-weight:700;flex:1;background:var(--bg-soft);color:var(--text);}
 .btn.primary{background:var(--orange);color:#fff;}
 .btn.danger{background:#fff0ef;color:var(--red);}
+.btn:disabled{opacity:.45;}
 
 /* ---------- export bar ---------- */
 #exportBar{position:absolute;top:calc(56px + var(--safe-t));left:10px;right:10px;z-index:19;display:flex;gap:6px;}
@@ -223,7 +241,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.08.10b</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.08.16c</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -231,10 +249,16 @@ textarea#pointNotes{
     </div>
   </header>
 
+  <button id="btnProjectBar" class="project-bar">
+    <span class="project-bar-ico">📁</span>
+    <span class="project-bar-label">Projet : <b id="projectBadgeName">—</b></span>
+    <span class="project-bar-chev">▾</span>
+  </button>
+
   <div id="mapWrap">
     <svg id="mapSvg"><g id="mapLayer"></g></svg>
 
-    <div class="gpsbadge searching" id="gpsBadge"><b>Position</b>Recherche du signal…</div>
+    <div class="gpsbadge searching" id="gpsBadge"><b>Recherche…</b></div>
     <div class="quicklayers" id="quickLayers"></div>
     <div id="pointConfirmBar">
       <span>Placer un point ici ?</span>
@@ -328,6 +352,42 @@ textarea#pointNotes{
       <button id="btnGeocode" class="btn" style="margin:0;">🌍 Chercher ce lieu sur la carte</button>
     </div>
     <div class="editor-body" id="searchResultsList"></div>
+  </div>
+
+  <div id="projectOverlay">
+    <div class="editor-head">
+      <div style="font-family:var(--font-head);font-size:17px;font-weight:800;flex:1;">Projets / missions</div>
+      <button id="btnCloseProject">✕</button>
+    </div>
+    <div class="editor-body">
+      <div id="projectList"></div>
+      <button class="btn" id="btnNewProject" style="margin-top:4px;">➕ Nouveau projet</button>
+
+      <div style="height:1px;background:var(--border);margin:20px 0;"></div>
+
+      <h3 style="font-family:var(--font-head);font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-mute);margin:0 0 8px;">📤 Exporter ce projet</h3>
+      <p style="font-size:10.5px;color:var(--text-mute);margin:-2px 0 8px;line-height:1.5;">Regroupe tous les points du projet actif (notes, GPS, horodatage, photos/vidéos) dans un seul fichier — à transférer sur un autre téléphone ou PC.</p>
+      <button class="btn" id="btnExportProject">📤 Exporter « <span id="exportProjectName"></span> »</button>
+
+      <h3 style="font-family:var(--font-head);font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-mute);margin:20px 0 8px;">📥 Importer dans ce projet</h3>
+      <p style="font-size:10.5px;color:var(--text-mute);margin:-2px 0 8px;line-height:1.5;">Ajoute les points d'un fichier exporté à « <span id="importProjectName"></span> ». Les points déjà présents sont automatiquement ignorés — rien n'est jamais écrasé.</p>
+      <button class="btn" id="btnImportProject">📥 Choisir un fichier à importer</button>
+      <input type="file" id="fileImportProject" accept=".zip" style="display:none;">
+    </div>
+  </div>
+
+  <div id="importSummaryOverlay">
+    <div class="editor-head">
+      <div style="font-family:var(--font-head);font-size:17px;font-weight:800;flex:1;">Confirmer l'import</div>
+      <button id="btnCloseImportSummary">✕</button>
+    </div>
+    <div class="editor-body">
+      <div id="importSummaryBody"></div>
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button class="btn" id="btnCancelImport" style="margin:0;">Annuler</button>
+        <button class="btn primary" id="btnConfirmImport" style="margin:0;">Confirmer l'import</button>
+      </div>
+    </div>
   </div>
 
   <input type="file" id="fileInputTypoMobile" accept=".xlsx,.csv" style="display:none;">
@@ -699,7 +759,178 @@ const Store = {
     try{ localStorage.removeItem(key); return true; }catch(e){ return false; }
   }
 };
-const STORE_KEY = 'terrain_notes_points_v1';
+const STORE_KEY = 'terrain_notes_points_v1'; // ancien format plat — conservé pour la migration uniquement
+
+/* =========================================================
+   1B. INDEXEDDB — stockage par projet (points, photos, sites, table cellulaire)
+   ========================================================= */
+const IDB_NAME = 'terrain_notes_db', IDB_VERSION = 1;
+let _idbPromise = null;
+function openIDB(){
+  if(_idbPromise) return _idbPromise;
+  _idbPromise = new Promise((resolve,reject)=>{
+    if(!('indexedDB' in window)){ reject(new Error('IndexedDB non supporté par ce navigateur.')); return; }
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = e=>{
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', {keyPath:'id'});
+      if(!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', {keyPath:'key'});
+      if(!db.objectStoreNames.contains('points')){
+        const s = db.createObjectStore('points', {keyPath:'id'});
+        s.createIndex('projectId','projectId',{unique:false});
+      }
+      if(!db.objectStoreNames.contains('photos')){
+        const s = db.createObjectStore('photos', {keyPath:'id'});
+        s.createIndex('pointId','pointId',{unique:false});
+        s.createIndex('projectId','projectId',{unique:false});
+      }
+      if(!db.objectStoreNames.contains('sites')){
+        const s = db.createObjectStore('sites', {keyPath:'_storeKey'});
+        s.createIndex('projectId','projectId',{unique:false});
+      }
+      if(!db.objectStoreNames.contains('celltable')) db.createObjectStore('celltable', {keyPath:'projectId'});
+    };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+  return _idbPromise;
+}
+function reqToPromise(req){ return new Promise((res,rej)=>{ req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); }); }
+async function idbTx(storeNames, mode){ const db=await openIDB(); return db.transaction(storeNames, mode||'readonly'); }
+async function idbGetAll(storeName, indexName, query){
+  const tx = await idbTx([storeName]);
+  const store = indexName ? tx.objectStore(storeName).index(indexName) : tx.objectStore(storeName);
+  return reqToPromise(store.getAll(query));
+}
+async function idbGet(storeName, key){
+  const tx = await idbTx([storeName]);
+  return reqToPromise(tx.objectStore(storeName).get(key));
+}
+async function idbPut(storeName, value){
+  const tx = await idbTx([storeName], 'readwrite');
+  tx.objectStore(storeName).put(value);
+  return new Promise((res,rej)=>{ tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); });
+}
+async function idbPutMany(storeName, values){
+  if(!values.length) return true;
+  const tx = await idbTx([storeName], 'readwrite');
+  const store = tx.objectStore(storeName);
+  values.forEach(v=>store.put(v));
+  return new Promise((res,rej)=>{ tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); });
+}
+async function idbDelete(storeName, key){
+  const tx = await idbTx([storeName], 'readwrite');
+  tx.objectStore(storeName).delete(key);
+  return new Promise((res,rej)=>{ tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); });
+}
+async function idbDeleteByIndex(storeName, indexName, value){
+  const tx = await idbTx([storeName], 'readwrite');
+  const idx = tx.objectStore(storeName).index(indexName);
+  const req = idx.openCursor(IDBKeyRange.only(value));
+  req.onsuccess = e=>{ const cur=e.target.result; if(cur){ cur.delete(); cur.continue(); } };
+  return new Promise((res,rej)=>{ tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); });
+}
+
+/* -------- gestion des projets / missions -------- */
+let PROJECTS = [];          // [{id,name,createdAt}]
+let activeProjectId = null;
+
+async function loadProjectsList(){
+  PROJECTS = (await idbGetAll('projects')) || [];
+  PROJECTS.sort((a,b)=>a.createdAt-b.createdAt);
+}
+async function createProject(name){
+  const proj = { id:uid(), name:(name||'').trim()||('Mission '+(PROJECTS.length+1)), createdAt:Date.now() };
+  await idbPut('projects', proj);
+  PROJECTS.push(proj);
+  return proj;
+}
+async function renameProject(id, name){
+  const p = PROJECTS.find(x=>x.id===id); if(!p || !name.trim()) return;
+  p.name = name.trim();
+  await idbPut('projects', p);
+}
+async function wipeProjectData(id){
+  const pts = await idbGetAll('points','projectId', id);
+  for(const p of pts){ await idbDeleteByIndex('photos','pointId', p.id); }
+  await idbDeleteByIndex('points','projectId', id);
+  await idbDeleteByIndex('sites','projectId', id);
+  await idbDelete('celltable', id);
+}
+async function deleteProject(id){
+  if(PROJECTS.length<=1){ toast('Impossible de supprimer le dernier projet restant'); return false; }
+  await wipeProjectData(id);
+  await idbDelete('projects', id);
+  PROJECTS = PROJECTS.filter(x=>x.id!==id);
+  return true;
+}
+async function loadActiveProjectData(){
+  // recharge en mémoire points / NETSITES / CELL_TABLE pour le projet actif depuis IndexedDB
+  const pts = await idbGetAll('points','projectId', activeProjectId);
+  points = pts.sort((a,b)=>a.ts-b.ts);
+  pointCounter = points.length;
+  mediaBlobs.forEach(mb=>URL.revokeObjectURL(mb.url));
+  mediaBlobs.clear();
+
+  const siteRows = await idbGetAll('sites','projectId', activeProjectId);
+  NETSITES = siteRows.map(s=>{ const c={...s}; delete c._storeKey; delete c.projectId; return c; });
+
+  const ct = await idbGet('celltable', activeProjectId);
+  if(ct && Array.isArray(ct.headers) && Array.isArray(ct.rows)){
+    const table = buildCellTableFromRows([ct.headers, ...ct.rows]);
+    CELL_TABLE = table || [];
+    if(document.getElementById('cellTableStatus')) document.getElementById('cellTableStatus').textContent = CELL_TABLE.length+' cellule(s) chargée(s) pour ce projet.';
+  } else {
+    CELL_TABLE = [];
+    if(document.getElementById('cellTableStatus')) document.getElementById('cellTableStatus').textContent = '';
+  }
+}
+async function setActiveProject(id, skipRender){
+  activeProjectId = id;
+  await idbPut('meta', {key:'activeProjectId', value:id});
+  await loadActiveProjectData();
+  if(!skipRender){ renderAll(); renderSitesAll(); updateProjectBadge(); }
+}
+function updateProjectBadge(){
+  const el = document.getElementById('projectBadgeName');
+  if(!el) return;
+  const p = PROJECTS.find(x=>x.id===activeProjectId);
+  el.textContent = p ? p.name : '—';
+}
+
+/* -------- migration depuis l'ancien stockage à plat (une seule fois) -------- */
+async function migrateIfNeeded(){
+  await loadProjectsList();
+  if(PROJECTS.length>0){
+    const savedActive = await idbGet('meta','activeProjectId');
+    activeProjectId = (savedActive && PROJECTS.some(p=>p.id===savedActive.value)) ? savedActive.value : PROJECTS[0].id;
+    return;
+  }
+  const defaultProj = await createProject('Mission par défaut');
+  activeProjectId = defaultProj.id;
+
+  const oldPoints = await Store.get(STORE_KEY);
+  if(oldPoints && Array.isArray(oldPoints.points) && oldPoints.points.length){
+    await idbPutMany('points', oldPoints.points.map(p=>({...p, projectId:defaultProj.id})));
+  }
+  const oldSites = await Store.get(SITES_STORE_KEY);
+  if(oldSites && Array.isArray(oldSites.sites) && oldSites.sites.length){
+    await idbPutMany('sites', oldSites.sites.map(s=>({...s, projectId:defaultProj.id, _storeKey:defaultProj.id+'::'+s.id})));
+  }
+  const oldCellIdx = await Store.get('terrain_notes_celltable_index_v1');
+  if(oldCellIdx && Array.isArray(oldCellIdx.headers) && oldCellIdx.chunkCount){
+    let allRows=[];
+    for(let c=0;c<oldCellIdx.chunkCount;c++){
+      const chunk = await Store.get('terrain_notes_celltable_chunk_'+c);
+      if(Array.isArray(chunk)) allRows = allRows.concat(chunk);
+    }
+    if(allRows.length) await idbPut('celltable', { projectId:defaultProj.id, headers:oldCellIdx.headers, rows:allRows, savedAt:Date.now() });
+  }
+  await idbPut('meta', {key:'activeProjectId', value:defaultProj.id});
+  if((oldPoints&&oldPoints.points&&oldPoints.points.length) || (oldSites&&oldSites.sites&&oldSites.sites.length)){
+    toast('Données existantes migrées vers « Mission par défaut »');
+  }
+}
 
 /* =========================================================
    2. ÉTAT
@@ -803,7 +1034,7 @@ function onGeoSuccess(pos){
   }
   gpsBadge.classList.remove('searching','error');
   const q = accuracyQuality(currentPos.accuracy);
-  gpsBadge.innerHTML = `<b>Position</b><span style="color:${q.color};font-weight:700;">±${Math.round(currentPos.accuracy)} m (${q.label})</span> · ${currentPos.lat.toFixed(5)}, ${currentPos.lon.toFixed(5)}`;
+  gpsBadge.innerHTML = `<span style="color:${q.color};font-weight:700;">±${Math.round(currentPos.accuracy)}m</span>`;
   btnMark.disabled=false;
   if(!center) center = { lat:currentPos.lat, lon:currentPos.lon };
   if(followMode) center = { lat:currentPos.lat, lon:currentPos.lon };
@@ -811,7 +1042,7 @@ function onGeoSuccess(pos){
 }
 function onGeoError(err){
   gpsBadge.classList.add('error'); gpsBadge.classList.remove('searching');
-  gpsBadge.innerHTML = `<b>Position indisponible</b>${err.message||'Vérifiez les autorisations de localisation'}`;
+  gpsBadge.innerHTML = `<b>Position indisponible</b> ${err.message||'vérifiez les autorisations'}`;
   if(!center) center = { lat:14.7167, lon:-17.4677 }; // repli neutre (Dakar) tant qu'aucune position n'est connue
 }
 let wakeLock = null;
@@ -1091,22 +1322,21 @@ window.addEventListener('resize', renderMap);
    6. POINTS — création / persistance
    ========================================================= */
 async function persist(){
-  await Store.set(STORE_KEY, { points, pointCounter, savedAt:Date.now() });
+  // les points sont écrits individuellement (voir addPoint/deletePoint/etc.) — cette fonction
+  // ne sert plus qu'à ré-écrire l'intégralité du point courant après une modification de champ
+}
+async function persistPoint(p){
+  await idbPut('points', { ...p, projectId:activeProjectId });
 }
 async function restore(){
-  const saved = await Store.get(STORE_KEY);
-  if(saved && Array.isArray(saved.points)){
-    points = saved.points;
-    pointCounter = saved.pointCounter || points.length;
-    if(points.length){ toast(points.length+' point(s) restauré(s) — photos/vidéos à ré-attacher si besoin'); }
-  }
+  // remplacé par migrateIfNeeded() + setActiveProject() dans init()
 }
 
 function addPoint(lat, lon, accuracy, openAfter){
   pointCounter++;
   const p = { id:uid(), name:'Point '+pointCounter, lat, lon, accuracy:accuracy||null, ts:Date.now(), notes:'', media:[] };
   points.push(p);
-  persist(); renderAll();
+  persistPoint(p); renderAll();
   if(openAfter) openEditor(p.id);
   return p;
 }
@@ -1117,23 +1347,28 @@ btnMark.addEventListener('click', ()=>{
   addPoint(useBest.lat, useBest.lon, useBest.accuracy, true);
 });
 
-function deletePoint(id){
+async function deletePoint(id){
   const p = points.find(x=>x.id===id);
-  if(p) p.media.forEach(m=>{ const mb=mediaBlobs.get(m.id); if(mb){ URL.revokeObjectURL(mb.url); mediaBlobs.delete(m.id); } });
+  if(p){
+    p.media.forEach(m=>{ const mb=mediaBlobs.get(m.id); if(mb){ URL.revokeObjectURL(mb.url); mediaBlobs.delete(m.id); } });
+    await idbDeleteByIndex('photos','pointId', id);
+  }
   points = points.filter(x=>x.id!==id);
-  persist(); renderAll();
+  await idbDelete('points', id);
+  renderAll();
 }
 
 /* =========================================================
    6B. SITES RÉSEAU — persistance, panneau, liste, détail
    ========================================================= */
-const SITES_STORE_KEY = 'terrain_notes_netsites_v1';
-async function persistSites(){ await Store.set(SITES_STORE_KEY, { sites:NETSITES, savedAt:Date.now() }); }
-async function restoreSites(){
-  const saved = await Store.get(SITES_STORE_KEY);
-  if(saved && Array.isArray(saved.sites)) NETSITES = saved.sites;
+const SITES_STORE_KEY = 'terrain_notes_netsites_v1'; // ancien format plat — migration uniquement
+async function persistSites(){
+  await idbDeleteByIndex('sites','projectId', activeProjectId);
+  await idbPutMany('sites', NETSITES.map(s=>({ ...s, projectId:activeProjectId, _storeKey:activeProjectId+'::'+s.id })));
 }
-
+async function restoreSites(){
+  // remplacé par migrateIfNeeded() + setActiveProject() dans init()
+}
 function renderNetStatutChips(){
   const wrap=document.getElementById('netStatutChips');
   wrap.innerHTML = Object.keys(STATUT_LABEL).map(st=>`
@@ -1358,7 +1593,7 @@ function openEditor(id){
 function closeEditor(){
   if(editingPointId){
     const p = points.find(x=>x.id===editingPointId);
-    if(p){ p.name = pointNameInput.value.trim()||p.name; p.notes = pointNotesInput.value; persist(); }
+    if(p){ p.name = pointNameInput.value.trim()||p.name; p.notes = pointNotesInput.value; persistPoint(p); }
   }
   editingPointId=null;
   editorOverlay.classList.remove('open');
@@ -1375,23 +1610,37 @@ document.getElementById('btnDeletePoint').addEventListener('click', ()=>{
   }
 });
 
-function renderMediaGrid(p){
+async function renderMediaGrid(p){
   const grid=document.getElementById('mediaGrid');
-  grid.innerHTML = p.media.map(m=>{
-    const mb = mediaBlobs.get(m.id);
-    const src = mb? mb.url : '';
-    const inner = !mb ? `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:9px;color:#8a93a3;text-align:center;padding:4px;">déjà<br>téléchargé</div>`
-      : (m.type==='image' ? `<img src="${src}">` : `<video src="${src}" muted></video>`);
-    return `<div class="media-thumb" data-media="${m.id}">${inner}<span class="kind">${m.type==='image'?'📷':'🎥'}</span><button class="del" data-del="${m.id}">✕</button></div>`;
-  }).join('');
-  grid.querySelectorAll('[data-del]').forEach(btn=>btn.addEventListener('click', ev=>{
+  grid.innerHTML = p.media.map(m=>`<div class="media-thumb" data-media="${m.id}" id="mediaThumb_${m.id}">
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:9px;color:#8a93a3;">…</div>
+      <span class="kind">${m.type==='image'?'📷':'🎥'}</span><button class="del" data-del="${m.id}">✕</button></div>`).join('');
+  grid.querySelectorAll('[data-del]').forEach(btn=>btn.addEventListener('click', async ev=>{
     ev.stopPropagation();
     const mid=btn.dataset.del;
     const p2=points.find(x=>x.id===editingPointId);
     const mb=mediaBlobs.get(mid); if(mb){ URL.revokeObjectURL(mb.url); mediaBlobs.delete(mid); }
     p2.media = p2.media.filter(m=>m.id!==mid);
-    persist(); renderMediaGrid(p2); renderStats();
+    await idbDelete('photos', mid);
+    persistPoint(p2); renderMediaGrid(p2); renderStats();
   }));
+  // charge (ou récupère du cache mémoire) chaque vignette, sans bloquer l'affichage initial
+  for(const m of p.media){
+    let mb = mediaBlobs.get(m.id);
+    if(!mb){
+      try{
+        const rec = await idbGet('photos', m.id);
+        if(rec && rec.blob){ mb = { blob:rec.blob, url:URL.createObjectURL(rec.blob), type:m.type }; mediaBlobs.set(m.id, mb); }
+      }catch(e){ /* photo indisponible */ }
+    }
+    const cell = document.getElementById('mediaThumb_'+m.id);
+    if(!cell) continue; // l'éditeur a pu être fermé entre-temps
+    if(mb){
+      cell.querySelector('div').outerHTML = m.type==='image' ? `<img src="${mb.url}">` : `<video src="${mb.url}" muted></video>`;
+    } else {
+      cell.querySelector('div').innerHTML = 'photo<br>indisponible';
+    }
+  }
 }
 
 /* =========================================================
@@ -1412,12 +1661,14 @@ async function attachFiles(fileList, kind){
     const fname = `${safeName(p.name)}_${kind}${p.media.filter(m=>m.type===kind).length+n}.${ext}`;
     mediaBlobs.set(mid, { blob:file, url:URL.createObjectURL(file), type:kind });
     p.media.push({ id:mid, name:fname, type:kind });
+    // persistance durable (IndexedDB) pour l'export du projet, EN PLUS du téléchargement immédiat ci-dessous
+    idbPut('photos', { id:mid, pointId:p.id, projectId:activeProjectId, name:fname, type:kind, mimeType:file.type||'', blob:file }).catch(()=>{});
     // téléchargement immédiat — sécurité si la session se ferme avant l'export groupé
     downloadBytes(fname, new Uint8Array(await file.arrayBuffer()), file.type||'application/octet-stream');
     n++;
   }
-  persist(); renderMediaGrid(p); renderStats();
-  toast((kind==='image'?'Photo(s)':'Vidéo(s)')+' ajoutée(s) et téléchargée(s) sur l’appareil');
+  persistPoint(p); renderMediaGrid(p); renderStats();
+  toast((kind==='image'?'Photo(s)':'Vidéo(s)')+' ajoutée(s), sauvegardée(s) et téléchargée(s)');
 }
 fileImg.addEventListener('change', e=>{ if(e.target.files.length) attachFiles(e.target.files,'image'); e.target.value=''; });
 fileVid.addEventListener('change', e=>{ if(e.target.files.length) attachFiles(e.target.files,'video'); e.target.value=''; });
@@ -1444,29 +1695,183 @@ document.getElementById('btnExportZip').addEventListener('click', async ()=>{
   let missing=0;
   for(const p of points){
     for(const m of p.media){
-      const mb=mediaBlobs.get(m.id);
+      let mb = mediaBlobs.get(m.id);
+      if(!mb){ try{ const rec=await idbGet('photos', m.id); if(rec&&rec.blob) mb={blob:rec.blob}; }catch(e){} }
       if(mb){ realFiles.push({ name:'media/'+m.name, data:new Uint8Array(await mb.blob.arrayBuffer()) }); }
       else missing++;
     }
   }
   const zipBytes = buildZip(realFiles);
   downloadBytes('mission_terrain_'+Date.now()+'.zip', zipBytes, 'application/zip');
-  if(missing) toast(missing+' média(s) déjà téléchargé(s) individuellement — non ré-inclus dans ce zip');
+  if(missing) toast(missing+' média(s) introuvable(s) (capturés avant cette mise à jour) — non inclus dans ce zip');
+});
+
+/* =========================================================
+   10B. PROJETS — panneau, export/import avec fusion
+   ========================================================= */
+function renderProjectList(){
+  const wrap = document.getElementById('projectList');
+  wrap.innerHTML = PROJECTS.map(p=>`
+    <div class="project-row ${p.id===activeProjectId?'active':''}" data-pid="${p.id}">
+      <div class="radio" data-select="${p.id}"></div>
+      <div class="pbody" data-select="${p.id}">
+        <div class="pname">${p.name}</div>
+        <div class="pmeta">créé le ${new Date(p.createdAt).toLocaleDateString('fr-FR')}</div>
+      </div>
+      <div class="pactions">
+        <button data-rename="${p.id}" title="Renommer">✏️</button>
+        <button data-delete="${p.id}" title="Supprimer">🗑️</button>
+      </div>
+    </div>`).join('');
+  wrap.querySelectorAll('[data-select]').forEach(el=>el.addEventListener('click', async ()=>{
+    const pid = el.dataset.select;
+    if(pid===activeProjectId) return;
+    await setActiveProject(pid);
+    renderProjectList(); updateExportImportLabels();
+    toast('Projet actif : '+PROJECTS.find(p=>p.id===pid).name);
+  }));
+  wrap.querySelectorAll('[data-rename]').forEach(btn=>btn.addEventListener('click', async ev=>{
+    ev.stopPropagation();
+    const pid = btn.dataset.rename, p = PROJECTS.find(x=>x.id===pid);
+    const name = prompt('Nouveau nom du projet :', p.name);
+    if(name && name.trim()){ await renameProject(pid, name); renderProjectList(); updateExportImportLabels(); if(pid===activeProjectId) updateProjectBadge(); }
+  }));
+  wrap.querySelectorAll('[data-delete]').forEach(btn=>btn.addEventListener('click', async ev=>{
+    ev.stopPropagation();
+    const pid = btn.dataset.delete, p = PROJECTS.find(x=>x.id===pid);
+    if(!confirm(`Supprimer définitivement « ${p.name} » et tous ses points/photos ?\nCette action est irréversible.`)) return;
+    const wasActive = pid===activeProjectId;
+    const ok = await deleteProject(pid);
+    if(!ok) return;
+    if(wasActive) await setActiveProject(PROJECTS[0].id);
+    renderProjectList(); updateExportImportLabels(); updateProjectBadge();
+    renderAll(); renderSitesAll();
+    toast('Projet supprimé');
+  }));
+}
+function updateExportImportLabels(){
+  const name = (PROJECTS.find(p=>p.id===activeProjectId)||{}).name || '';
+  document.getElementById('exportProjectName').textContent = name;
+  document.getElementById('importProjectName').textContent = name;
+}
+function openProjectPanel(){ renderProjectList(); updateExportImportLabels(); document.getElementById('projectOverlay').classList.add('open'); }
+function closeProjectPanel(){ document.getElementById('projectOverlay').classList.remove('open'); }
+document.getElementById('btnProjectBar').addEventListener('click', openProjectPanel);
+document.getElementById('btnCloseProject').addEventListener('click', closeProjectPanel);
+document.getElementById('btnNewProject').addEventListener('click', async ()=>{
+  const name = prompt('Nom du nouveau projet :', '');
+  if(name===null) return;
+  const proj = await createProject(name);
+  await setActiveProject(proj.id);
+  renderProjectList(); updateExportImportLabels(); updateProjectBadge();
+  toast('Projet « '+proj.name+' » créé et activé');
+});
+
+/* -------- export du projet actif (manifest.json + photos) -------- */
+document.getElementById('btnExportProject').addEventListener('click', async ()=>{
+  if(!points.length){ toast('Ce projet ne contient encore aucun point'); return; }
+  const proj = PROJECTS.find(p=>p.id===activeProjectId);
+  const manifest = {
+    app:'terrain_notes_mobile', formatVersion:1, exportedAt:Date.now(),
+    projectName: proj ? proj.name : '',
+    points: points.map(p=>({ id:p.id, name:p.name, lat:p.lat, lon:p.lon, accuracy:p.accuracy, ts:p.ts, notes:p.notes,
+      media:p.media.map(m=>({id:m.id, name:m.name, type:m.type})) }))
+  };
+  const files = [{ name:'manifest.json', data:new TextEncoder().encode(JSON.stringify(manifest)) }];
+  let missing=0, included=0;
+  for(const p of points){
+    for(const m of p.media){
+      let mb = mediaBlobs.get(m.id);
+      if(!mb){ try{ const rec=await idbGet('photos', m.id); if(rec&&rec.blob) mb={blob:rec.blob}; }catch(e){} }
+      if(mb){ files.push({ name:'media/'+m.id, data:new Uint8Array(await mb.blob.arrayBuffer()) }); included++; }
+      else missing++;
+    }
+  }
+  const zipBytes = buildZip(files);
+  const safeProjName = (proj?proj.name:'projet').replace(/[^a-z0-9_-]+/gi,'_').slice(0,40);
+  downloadBytes('mission_'+safeProjName+'_'+Date.now()+'.zip', zipBytes, 'application/zip');
+  toast(`Export prêt : ${points.length} point(s), ${included} média(s)` + (missing?`, ${missing} média(s) indisponible(s)`:''));
+});
+
+/* -------- import dans le projet actif (fusion, jamais d'écrasement) -------- */
+let _pendingImport = null; // {toAdd:[...points], alreadyPresent:N, mediaFiles:Map(mediaId->Uint8Array), mediaMeta:Map, projectName}
+async function readZipGeneric(arrayBuffer){
+  const bytes=new Uint8Array(arrayBuffer), dv=new DataView(arrayBuffer);
+  const entries = xlsxParseCentralDirectory(bytes,dv);
+  const readEntry = async name=>{
+    if(!entries[name]) return null;
+    return await xlsxExtractEntry(bytes,dv,entries[name]);
+  };
+  return { entries, readEntry };
+}
+document.getElementById('btnImportProject').addEventListener('click', ()=>document.getElementById('fileImportProject').click());
+document.getElementById('fileImportProject').addEventListener('change', async e=>{
+  const file = e.target.files[0]; e.target.value='';
+  if(!file) return;
+  try{
+    const zip = await readZipGeneric(await file.arrayBuffer());
+    const manifestBytes = await zip.readEntry('manifest.json');
+    if(!manifestBytes){ toast('Fichier invalide — manifest.json introuvable dans ce zip'); return; }
+    const manifest = JSON.parse(new TextDecoder('utf-8').decode(manifestBytes));
+    if(!manifest || !Array.isArray(manifest.points)){ toast('Fichier invalide — format non reconnu'); return; }
+
+    const existingIds = new Set(points.map(p=>p.id));
+    const toAdd = manifest.points.filter(p=>!existingIds.has(p.id));
+    const alreadyPresent = manifest.points.length - toAdd.length;
+
+    _pendingImport = { toAdd, alreadyPresent, manifest, zip };
+    const body = document.getElementById('importSummaryBody');
+    body.innerHTML = `
+      <div class="import-summary-row"><span>Points dans le fichier</span><b>${manifest.points.length}</b></div>
+      <div class="import-summary-row"><span>Nouveaux — seront ajoutés</span><b style="color:var(--orange-dark);">${toAdd.length}</b></div>
+      <div class="import-summary-row"><span>Déjà présents — ignorés</span><b style="color:var(--text-mute);">${alreadyPresent}</b></div>
+      <p style="font-size:11px;color:var(--text-mute);margin-top:14px;line-height:1.5;">Projet source : « ${manifest.projectName||'—'} ». Import vers : « ${(PROJECTS.find(p=>p.id===activeProjectId)||{}).name||''} ». Aucune donnée existante ne sera modifiée ou écrasée.</p>`;
+    document.getElementById('btnConfirmImport').disabled = toAdd.length===0;
+    document.getElementById('importSummaryOverlay').classList.add('open');
+  }catch(err){
+    toast('Import impossible : '+err.message);
+  }
+});
+document.getElementById('btnCancelImport').addEventListener('click', ()=>{
+  _pendingImport = null;
+  document.getElementById('importSummaryOverlay').classList.remove('open');
+});
+document.getElementById('btnCloseImportSummary').addEventListener('click', ()=>{
+  _pendingImport = null;
+  document.getElementById('importSummaryOverlay').classList.remove('open');
+});
+document.getElementById('btnConfirmImport').addEventListener('click', async ()=>{
+  if(!_pendingImport || !_pendingImport.toAdd.length) return;
+  const { toAdd, zip } = _pendingImport;
+  for(const p of toAdd){
+    const newPoint = { id:p.id, name:p.name, lat:p.lat, lon:p.lon, accuracy:p.accuracy||null, ts:p.ts||Date.now(), notes:p.notes||'', media:p.media||[] };
+    points.push(newPoint);
+    await persistPoint(newPoint);
+    for(const m of (p.media||[])){
+      try{
+        const data = await zip.readEntry('media/'+m.id);
+        if(data){
+          const blob = new Blob([data]);
+          await idbPut('photos', { id:m.id, pointId:newPoint.id, projectId:activeProjectId, name:m.name, type:m.type, mimeType:'', blob });
+        }
+      }catch(e){ /* média manquant dans le zip — le point reste importé sans cette pièce jointe */ }
+    }
+  }
+  pointCounter = points.length;
+  _pendingImport = null;
+  document.getElementById('importSummaryOverlay').classList.remove('open');
+  closeProjectPanel();
+  renderAll();
+  toast(toAdd.length+' point(s) importé(s) avec succès');
 });
 
 /* =========================================================
    10A. IDENTIFICATION DE CELLULE — eNodeB + PCI + EARFCN -> nom de cellule
    ========================================================= */
 let CELL_TABLE = []; // {raw:{...toutes les colonnes...}, enodeb, pci, earfcn}
-const CELL_INDEX_KEY = 'terrain_notes_celltable_index_v1';
-const CELL_CHUNK_PREFIX = 'terrain_notes_celltable_chunk_';
-const CELL_CHUNK_MAX_BYTES = 500*1024; // 500 Ko par fragment — reste sous toute limite raisonnable par clé
 const ENODEB_ALIASES=['eNodeB','eNodeBId','ENODEB','ENB','ENBID','ENODEBID','eNB ID','ENODEB ID','GNBID','GNODEB'];
 const PCI_ALIASES=['PCI','Pci','Physical Cell ID','Physical cell ID','PhysicalCellId'];
 const EARFCN_ALIASES=['EARFCN','Earfcn','DLEARFCN','DL EARFCN','ARFCN'];
-const NAME_SITE_ALIASES=['NOM SITE','Site Name','SITE','Nom du site'];
-const NAME_CELL_ALIASES=['NOM CELLULE','Cell Name','CellName','Nom de la cellule'];
-const TAC_ALIASES=['TAC'];
 
 function anyColPresent(g, aliases){ return aliases.some(a=>g.idx[normKey(a)]!==undefined); }
 function normId(s){
@@ -1500,88 +1905,22 @@ function buildCellTableFromRows(rows){
   }
   return table;
 }
-function resolveColName(g, headers, aliases){
-  for(const a of aliases){
-    const k = normKey(a);
-    if(g.idx[k]!==undefined) return headers[g.idx[k]];
-  }
-  return null;
-}
-function subsetRows(headers, dataRows, keepCols){
-  const keepIdx = keepCols.map(c=>headers.indexOf(c));
-  return dataRows.map(r=>keepIdx.map(i=>r[i]!==undefined?r[i]:''));
-}
-// Répartit les lignes en fragments dont la taille JSON reste sous CELL_CHUNK_MAX_BYTES,
-// quelle que soit la largeur réelle des lignes (contrairement à un découpage par nombre fixe de lignes).
-function chunkRowsByBytes(dataRows, maxBytes){
-  const chunks=[]; let current=[]; let size=2;
-  for(const r of dataRows){
-    const rSize = JSON.stringify(r).length + 1;
-    if(current.length && size+rSize>maxBytes){ chunks.push(current); current=[]; size=2; }
-    current.push(r); size+=rSize;
-  }
-  if(current.length) chunks.push(current);
-  return chunks;
-}
-async function clearCellTableChunks(){
-  const oldIdx = await Store.get(CELL_INDEX_KEY);
-  if(oldIdx && oldIdx.chunkCount){
-    for(let i=0;i<oldIdx.chunkCount;i++){ await Store.delete(CELL_CHUNK_PREFIX+i); }
-  }
-}
-async function persistRowsChunked(headers, dataRows, trimmed, minimal){
-  await clearCellTableChunks();
-  const chunks = chunkRowsByBytes(dataRows, CELL_CHUNK_MAX_BYTES);
-  for(let c=0;c<chunks.length;c++){
-    const ok = await Store.set(CELL_CHUNK_PREFIX+c, chunks[c]);
-    if(!ok) return false;
-  }
-  return await Store.set(CELL_INDEX_KEY, { headers, chunkCount:chunks.length, totalRows:dataRows.length, trimmed, minimal, savedAt:Date.now() });
-}
 
-// Essaie 3 paliers, du plus complet au plus minimal, jusqu'à ce qu'un tienne dans le stockage disponible.
+// IndexedDB n'a pas la limite ~5 Mo de localStorage — un seul enregistrement par projet suffit,
+// plus besoin des paliers de repli (complet / allégé / minimal) qu'on avait dû construire avant.
 async function persistCellTable(rows){
-  const headers = rows[0], dataRows = rows.slice(1);
-  const g = rowsToGetter(rows);
-
-  // Palier 1 : toutes les colonnes
-  if(await persistRowsChunked(headers, dataRows, false, false)) return { ok:true, tier:1 };
-
-  // Palier 2 : colonnes essentielles (site, cellule, eNodeB, PCI, EARFCN, TAC)
-  const keepCols=[];
-  [NAME_SITE_ALIASES,NAME_CELL_ALIASES,ENODEB_ALIASES,PCI_ALIASES,EARFCN_ALIASES,TAC_ALIASES].forEach(al=>{
-    const name=resolveColName(g,headers,al); if(name && !keepCols.includes(name)) keepCols.push(name);
-  });
-  if(keepCols.length){
-    const trimmedRows = subsetRows(headers, dataRows, keepCols);
-    if(await persistRowsChunked(keepCols, trimmedRows, true, false)) return { ok:true, tier:2 };
-  }
-
-  // Palier 3 (minimal) : seulement de quoi retrouver une cellule (nom + eNodeB + PCI + EARFCN)
-  const minimalCols=[];
-  const cellName = resolveColName(g,headers,NAME_CELL_ALIASES) || resolveColName(g,headers,NAME_SITE_ALIASES);
-  [cellName, resolveColName(g,headers,ENODEB_ALIASES), resolveColName(g,headers,PCI_ALIASES), resolveColName(g,headers,EARFCN_ALIASES)]
-    .forEach(c=>{ if(c && !minimalCols.includes(c)) minimalCols.push(c); });
-  if(minimalCols.length>=3){
-    const minimalRows = subsetRows(headers, dataRows, minimalCols);
-    if(await persistRowsChunked(minimalCols, minimalRows, true, true)) return { ok:true, tier:3 };
-  }
-
-  return { ok:false, tier:0 };
+  try{
+    await idbPut('celltable', { projectId:activeProjectId, headers:rows[0], rows:rows.slice(1), savedAt:Date.now() });
+    return { ok:true };
+  }catch(e){ return { ok:false, error:e }; }
 }
 async function restoreCellTable(){
-  const idx = await Store.get(CELL_INDEX_KEY);
-  if(!idx || !Array.isArray(idx.headers) || !idx.chunkCount) return;
-  let allRows=[];
-  for(let c=0;c<idx.chunkCount;c++){
-    const chunk = await Store.get(CELL_CHUNK_PREFIX+c);
-    if(Array.isArray(chunk)) allRows = allRows.concat(chunk);
-  }
-  const table = buildCellTableFromRows([idx.headers, ...allRows]);
+  const rec = await idbGet('celltable', activeProjectId);
+  if(!rec || !Array.isArray(rec.headers)) return;
+  const table = buildCellTableFromRows([rec.headers, ...rec.rows]);
   if(table && table.length){
     CELL_TABLE = table;
-    const tag = idx.minimal ? ' — version minimale' : (idx.trimmed ? ' — version allégée' : '');
-    document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) (mémorisées depuis la dernière session'+tag+').';
+    document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) (mémorisées pour ce projet).';
   }
 }
 
@@ -1593,16 +1932,8 @@ function importCellTable(rows){
   document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s).';
   toast(table.length+' cellule(s) chargée(s) depuis le fichier.');
   persistCellTable(rows).then(res=>{
-    if(res.ok && res.tier===1) document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) — mémorisées pour la prochaine session.';
-    else if(res.ok && res.tier===2){
-      document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) — mémorisées en version allégée pour la prochaine session.';
-      toast('Fichier trop volumineux pour être mémorisé en intégralité — colonnes essentielles conservées entre les sessions.');
-    } else if(res.ok && res.tier===3){
-      document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) — mémorisées en version minimale (nom, eNodeB, PCI, EARFCN) pour la prochaine session.';
-      toast('Fichier très volumineux — seules les colonnes indispensables à la recherche sont conservées entre les sessions.');
-    } else {
-      toast('Chargé en mémoire, mais impossible à mémoriser même en version minimale (stockage du téléphone insuffisant) — à réimporter à chaque ouverture.');
-    }
+    if(res.ok) document.getElementById('cellTableStatus').textContent = table.length+' cellule(s) chargée(s) — mémorisées pour ce projet.';
+    else toast('Chargé en mémoire, mais échec de la sauvegarde — à réimporter à la prochaine ouverture.');
   });
 }
 async function handleCellTableFile(file){
@@ -1779,9 +2110,15 @@ if('serviceWorker' in navigator){
 }
 
 (async function init(){
-  await restore();
-  await restoreSites();
-  await restoreCellTable();
+  try{
+    await migrateIfNeeded();
+    await loadActiveProjectData();
+    if(points.length) toast(points.length+' point(s) restauré(s) pour ce projet');
+  }catch(e){
+    toast('Stockage indisponible sur ce navigateur — les données ne seront pas conservées entre sessions.');
+    console.error(e);
+  }
+  updateProjectBadge();
   updateAttribution();
   renderAll();
   renderSitesAll();
