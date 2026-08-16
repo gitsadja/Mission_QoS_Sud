@@ -241,7 +241,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.08.16c</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.08.17</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -256,7 +256,7 @@ textarea#pointNotes{
   </button>
 
   <div id="mapWrap">
-    <svg id="mapSvg"><g id="mapLayer"></g></svg>
+    <svg id="mapSvg"><g id="mapLayer"><g id="tileLayer"></g><g id="overlayLayer"></g></g></svg>
 
     <div class="gpsbadge searching" id="gpsBadge"><b>Recherche…</b></div>
     <div class="quicklayers" id="quickLayers"></div>
@@ -984,20 +984,56 @@ function tileUrl(layer,z,x,y){
   if(layer==='sat') return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
   return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
 }
-function renderTiles(parts,W,H){
-  if(baseLayer==='none') return;
+const SVGNS = 'http://www.w3.org/2000/svg';
+let _tileElements = new Map(); // "tx,ty" -> élément <image> déjà présent dans le DOM
+let _lastTileParams = null;    // {baseLayer, zoom} — un changement force une reconstruction complète
+function renderTiles(){
+  if(baseLayer==='none'){
+    if(_tileElements.size){ tileLayerEl.innerHTML=''; _tileElements.clear(); }
+    _lastTileParams = null;
+    return;
+  }
+  const [W,H] = dims();
   const cx=lonToX(center.lon,zoom), cy=latToY(center.lat,zoom);
   const originX=cx-W/2, originY=cy-H/2;
   const n=Math.pow(2,zoom);
   const firstX=Math.floor(originX/TILE_SIZE), firstY=Math.floor(originY/TILE_SIZE);
   const lastX=Math.floor((originX+W)/TILE_SIZE), lastY=Math.floor((originY+H)/TILE_SIZE);
+
+  const layerChanged = !_lastTileParams || _lastTileParams.baseLayer!==baseLayer || _lastTileParams.zoom!==zoom;
+  _lastTileParams = {baseLayer, zoom};
+  if(layerChanged){
+    // couche ou zoom différents : les tuiles existantes ne correspondent plus à rien, on repart de zéro
+    tileLayerEl.innerHTML = '';
+    _tileElements.clear();
+  }
+
+  const needed = new Set();
   for(let ty=firstY; ty<=lastY; ty++){
     if(ty<0||ty>=n) continue;
     for(let tx=firstX; tx<=lastX; tx++){
       const wx=((tx%n)+n)%n;
+      const key = tx+','+ty;
+      needed.add(key);
       const sx=tx*TILE_SIZE-originX, sy=ty*TILE_SIZE-originY;
-      parts.push(`<image href="${tileUrl(baseLayer,zoom,wx,ty)}" x="${sx.toFixed(1)}" y="${sy.toFixed(1)}" width="${TILE_SIZE}" height="${TILE_SIZE}" preserveAspectRatio="none"/>`);
+      let img = _tileElements.get(key);
+      if(!img){
+        // nouvelle tuile qui entre dans le cadre — seule celle-ci est (re)chargée
+        img = document.createElementNS(SVGNS,'image');
+        img.setAttribute('href', tileUrl(baseLayer,zoom,wx,ty));
+        img.setAttribute('width', TILE_SIZE); img.setAttribute('height', TILE_SIZE);
+        img.setAttribute('preserveAspectRatio','none');
+        tileLayerEl.appendChild(img);
+        _tileElements.set(key, img);
+      }
+      // tuile déjà chargée : on ne fait que la repositionner — pas de rechargement, pas de clignotement
+      img.setAttribute('x', sx.toFixed(1));
+      img.setAttribute('y', sy.toFixed(1));
     }
+  }
+  // retire les tuiles sorties du cadre
+  for(const [key,img] of _tileElements){
+    if(!needed.has(key)){ img.remove(); _tileElements.delete(key); }
   }
 }
 function updateAttribution(){
@@ -1072,6 +1108,7 @@ function startGeo(){
    5. RENDU CARTE
    ========================================================= */
 const svg=document.getElementById('mapSvg'), layer=document.getElementById('mapLayer');
+const tileLayerEl=document.getElementById('tileLayer'), overlayLayerEl=document.getElementById('overlayLayer');
 function dims(){ const r=svg.getBoundingClientRect(); return [r.width||360, r.height||500]; }
 
 function wedgePath(cx,cy,azimuthDeg,beamDeg,radius){
@@ -1129,7 +1166,7 @@ function renderMap(){
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   const parts=[];
 
-  renderTiles(parts,W,H);
+  renderTiles();
 
   // repère nord discret
   parts.push(`<line x1="${W-26}" y1="18" x2="${W-26}" y2="34" stroke="#8a93a3" stroke-width="1.4"/><polygon points="${W-26},12 ${W-31},22 ${W-21},22" fill="#8a93a3"/>`);
@@ -1184,7 +1221,7 @@ function renderMap(){
     }
   }
 
-  layer.innerHTML = parts.join('');
+  overlayLayerEl.innerHTML = parts.join('');
 }
 
 /* pan tactile + pincement-zoom */
