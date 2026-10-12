@@ -241,7 +241,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.08.17</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.08.19</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -317,6 +317,14 @@ textarea#pointNotes{
       </div>
       <button class="btn primary" id="btnSearchCell">🔍 Rechercher</button>
       <div id="cellSearchResults" style="margin-top:8px;max-height:220px;overflow-y:auto;"></div>
+    </div>
+
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+      <h3 style="font-family:var(--font-head);font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-mute);margin:0 0 8px;">🗂 Mapping RAN (1 seul fichier)</h3>
+      <p style="font-size:10.5px;color:var(--text-mute);margin:-2px 0 8px;line-height:1.5;">Charge <code>Mapping_RAN_&lt;Mois&gt;_&lt;Année&gt;.xlsx</code> : l'appli lit elle-même les feuilles <b>Typologie Secteur</b> (sites actifs) et <b>active_4G_cells</b> (identification de cellule).</p>
+      <button class="btn primary" id="btnImportMappingRan">📥 Importer Mapping RAN (Excel)</button>
+      <input type="file" id="fileInputMappingRan" accept=".xlsx" style="display:none;">
+      <div id="mappingRanStatus" style="font-size:11px;color:var(--text-mute);margin-top:6px;"></div>
     </div>
 
     <div class="panel-actions">
@@ -579,33 +587,48 @@ function xlsxParseSheetRows(xmlText,sharedStrings){
   });
   return rows;
 }
-async function readXlsxRows(arrayBuffer){
+async function openXlsxWorkbook(arrayBuffer){
   const bytes=new Uint8Array(arrayBuffer), dv=new DataView(arrayBuffer);
   const entries=xlsxParseCentralDirectory(bytes,dv);
-  let sheetPath='xl/worksheets/sheet1.xml';
+  const dec=new TextDecoder('utf-8');
+  const sheets=[]; // {name, path}
   if(entries['xl/workbook.xml'] && entries['xl/_rels/workbook.xml.rels']){
     try{
-      const wbXml=new TextDecoder('utf-8').decode(await xlsxExtractEntry(bytes,dv,entries['xl/workbook.xml']));
-      const relsXml=new TextDecoder('utf-8').decode(await xlsxExtractEntry(bytes,dv,entries['xl/_rels/workbook.xml.rels']));
-      const wbDoc=new DOMParser().parseFromString(wbXml,'application/xml');
-      const firstSheet=wbDoc.getElementsByTagName('sheet')[0];
-      if(firstSheet){
-        const rId=firstSheet.getAttribute('r:id')||firstSheet.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');
-        const relsDoc=new DOMParser().parseFromString(relsXml,'application/xml');
-        const rel=Array.from(relsDoc.getElementsByTagName('Relationship')).find(r=>r.getAttribute('Id')===rId);
-        if(rel) sheetPath='xl/'+rel.getAttribute('Target').replace(/^\/?xl\//,'');
-      }
-    }catch(e){ /* on retombe sur sheet1.xml */ }
+      const wbDoc=new DOMParser().parseFromString(dec.decode(await xlsxExtractEntry(bytes,dv,entries['xl/workbook.xml'])),'application/xml');
+      const relsDoc=new DOMParser().parseFromString(dec.decode(await xlsxExtractEntry(bytes,dv,entries['xl/_rels/workbook.xml.rels'])),'application/xml');
+      const rels={}; Array.from(relsDoc.getElementsByTagName('Relationship')).forEach(r=>rels[r.getAttribute('Id')]=r.getAttribute('Target'));
+      Array.from(wbDoc.getElementsByTagName('sheet')).forEach(sh=>{
+        const rId=sh.getAttribute('r:id')||sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');
+        const t=rels[rId]; if(!t) return;
+        const path = t.startsWith('/') ? t.replace(/^\//,'') : 'xl/'+t.replace(/^xl\//,'');
+        if(entries[path]) sheets.push({ name:sh.getAttribute('name')||('Feuille'+(sheets.length+1)), path });
+      });
+    }catch(e){ /* repli sheet1.xml */ }
   }
-  if(!entries[sheetPath]) sheetPath='xl/worksheets/sheet1.xml';
-  if(!entries[sheetPath]) throw new Error('Aucune feuille de calcul trouvée dans ce classeur.');
-  let sharedStrings=[];
-  if(entries['xl/sharedStrings.xml']){
-    const ssXml=new TextDecoder('utf-8').decode(await xlsxExtractEntry(bytes,dv,entries['xl/sharedStrings.xml']));
-    sharedStrings=xlsxParseSharedStrings(ssXml);
+  if(!sheets.length && entries['xl/worksheets/sheet1.xml']) sheets.push({ name:'Feuille1', path:'xl/worksheets/sheet1.xml' });
+  if(!sheets.length) throw new Error('Aucune feuille de calcul trouvée dans ce classeur.');
+  let sharedStrings=null;
+  async function getShared(){
+    if(sharedStrings===null){
+      sharedStrings = entries['xl/sharedStrings.xml']
+        ? xlsxParseSharedStrings(dec.decode(await xlsxExtractEntry(bytes,dv,entries['xl/sharedStrings.xml'])))
+        : [];
+    }
+    return sharedStrings;
   }
-  const sheetXml=new TextDecoder('utf-8').decode(await xlsxExtractEntry(bytes,dv,entries[sheetPath]));
-  return xlsxParseSheetRows(sheetXml,sharedStrings);
+  return {
+    sheets,
+    async rows(sheet){
+      const sh = typeof sheet==='number' ? sheets[sheet] : sheets.find(x=>x.name===sheet);
+      if(!sh) throw new Error('Feuille introuvable : '+sheet);
+      const ss=await getShared();
+      return xlsxParseSheetRows(dec.decode(await xlsxExtractEntry(bytes,dv,entries[sh.path])),ss);
+    }
+  };
+}
+async function readXlsxRows(arrayBuffer){
+  const wb=await openXlsxWorkbook(arrayBuffer);
+  return await wb.rows(0);
 }
 function parseCSVLine(line){
   const out=[]; let cur=''; let q=false;
@@ -947,6 +970,7 @@ let baseLayer = 'osm';         // 'osm' | 'sat' | 'none'
 let selectedPointId = null;
 let editingPointId = null;
 let pendingPoint = null;       // {lat,lon} en attente de confirmation (double-tap sur la carte)
+let searchPin = null;          // {lat,lon} repère temporaire posé après une recherche (tape pour le retirer)
 let measuring = false;
 let measurePts = [];           // jusqu'à 2 points {lat,lon}
 
@@ -1177,6 +1201,16 @@ function renderMap(){
     parts.push(`<circle cx="${gx}" cy="${gy}" r="3" fill="#FF6600"/>`);
   }
 
+  // repère temporaire de recherche (posé après un géocodage ou des coordonnées saisies) — tape pour le retirer
+  if(searchPin){
+    const [sx,sy] = project(searchPin.lat, searchPin.lon, W, H);
+    parts.push(`<g data-searchpin="1">
+      <ellipse cx="${sx}" cy="${sy+2}" rx="8" ry="3" fill="#0d0f14" fill-opacity="0.2"/>
+      <path d="M${sx},${sy} C${sx-11},${sy-15} ${sx-11},${sy-27} ${sx},${sy-30} C${sx+11},${sy-27} ${sx+11},${sy-15} ${sx},${sy} Z" fill="#D63AC9" stroke="#fff" stroke-width="2"/>
+      <circle cx="${sx}" cy="${sy-19}" r="4.5" fill="#fff"/>
+    </g>`);
+  }
+
   renderNetSites(parts,W,H);
 
   // position courante + cercle de précision
@@ -1300,8 +1334,10 @@ function endPointer(e){
     const realTarget = document.elementFromPoint(e.clientX, e.clientY);
     const tp = realTarget && realTarget.closest('[data-point]');
     const ts = realTarget && realTarget.closest('[data-site]');
+    const tsp = realTarget && realTarget.closest('[data-searchpin]');
     if(tp){ cancelPointConfirm(); openEditor(tp.dataset.point); }
     else if(ts){ cancelPointConfirm(); openSiteDetail(ts.dataset.site); }
+    else if(tsp){ searchPin=null; renderMap(); toast('Repère retiré'); }
     else {
       const now=Date.now();
       const isDoubleTap = lastTapPos && (now-lastTapTime)<DOUBLE_TAP_MS && Math.hypot(px-lastTapPos[0],py-lastTapPos[1])<DOUBLE_TAP_PX;
@@ -1373,6 +1409,7 @@ function addPoint(lat, lon, accuracy, openAfter){
   pointCounter++;
   const p = { id:uid(), name:'Point '+pointCounter, lat, lon, accuracy:accuracy||null, ts:Date.now(), notes:'', media:[] };
   points.push(p);
+  searchPin=null; // un point réel remplace le repère temporaire
   persistPoint(p); renderAll();
   if(openAfter) openEditor(p.id);
   return p;
@@ -1978,6 +2015,48 @@ async function handleCellTableFile(file){
   catch(e){ toast('Import impossible : '+e.message); }
 }
 
+/* ---- Mapping RAN : un seul classeur multi-feuilles -> sites actifs + table de cellules ---- */
+function normSheetName(n){ return String(n||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+function findSheet(wb, test){ return wb.sheets.find(sh=>test(normSheetName(sh.name))); }
+async function handleMappingRanFile(file){
+  const status=document.getElementById('mappingRanStatus');
+  try{
+    if(!/\.xlsx$/i.test(file.name||'')) throw new Error('Choisis le fichier Mapping RAN au format .xlsx.');
+    status.textContent='Lecture du classeur…';
+    const wb=await openXlsxWorkbook(await file.arrayBuffer());
+    const shTypo = findSheet(wb, n=>n.includes('typologie')) ;
+    const sh4G   = findSheet(wb, n=>/^active4gcells?$/.test(n)) || findSheet(wb, n=>n.includes('4g') && n.includes('cell'));
+    if(!shTypo && !sh4G){
+      throw new Error('Feuilles "Typologie Secteur" / "active_4G_cells" introuvables. Feuilles du fichier : '+wb.sheets.map(s=>s.name).join(', '));
+    }
+    const out=[];
+    if(shTypo){
+      status.textContent='Lecture de « '+shTypo.name+' »…';
+      await new Promise(r=>setTimeout(r,30));
+      const rows=await wb.rows(shTypo.name);
+      importTypoRows(rows);
+      const nAct=NETSITES.filter(s=>s.statut==='Actif').length;
+      out.push(nAct ? nAct+' site(s) actif(s)' : 'sites actifs : rien d\'importé (voir message)');
+    } else out.push('feuille Typologie absente');
+    if(sh4G){
+      status.textContent='Lecture de « '+sh4G.name+' »…';
+      await new Promise(r=>setTimeout(r,30));
+      const rows=await wb.rows(sh4G.name);
+      importCellTable(rows);
+      out.push(CELL_TABLE.length ? CELL_TABLE.length+' cellule(s) 4G' : 'cellules 4G : colonnes eNodeB/PCI/EARFCN introuvables');
+    } else out.push('feuille active_4G_cells absente');
+    status.textContent='✔ '+file.name+' — '+out.join(' · ');
+    toast('Mapping RAN : '+out.join(' · '));
+  }catch(e){
+    status.textContent='';
+    toast('Import impossible : '+e.message);
+  }
+}
+document.getElementById('btnImportMappingRan').addEventListener('click', ()=>document.getElementById('fileInputMappingRan').click());
+document.getElementById('fileInputMappingRan').addEventListener('change', e=>{
+  const f=e.target.files[0]; if(f) handleMappingRanFile(f); e.target.value='';
+});
+
 function renderCellSearchResults(matches, fallback){
   const wrap = document.getElementById('cellSearchResults');
   if(!matches.length){ wrap.innerHTML = '<div class="empty-list">Aucune cellule trouvée, même en repli sur l\'eNodeB seul.</div>'; return; }
@@ -2036,8 +2115,9 @@ function goToCoords(lat,lon,label){
   followMode=false; document.getElementById('btnFollow').classList.remove('on');
   cancelPointConfirm();
   center={lat,lon}; zoom=Math.max(zoom,16);
+  searchPin = {lat,lon};
   renderMap();
-  toast(label || ('Carte centrée sur '+lat.toFixed(5)+', '+lon.toFixed(5)));
+  toast((label || ('Carte centrée sur '+lat.toFixed(5)+', '+lon.toFixed(5))) + ' — repère temporaire posé');
 }
 
 function renderSearchResults(q){
