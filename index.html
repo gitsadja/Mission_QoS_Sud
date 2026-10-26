@@ -210,6 +210,7 @@ textarea#pointNotes{
 }
 .media-thumb .kind{position:absolute;bottom:3px;left:3px;background:rgba(13,15,20,.65);color:#fff;font-size:8.5px;border-radius:4px;padding:1px 4px;font-family:var(--font-mono);}
 .editor-footer{display:flex;gap:10px;padding:12px 16px calc(14px + var(--safe-b));border-top:1px solid var(--border);}
+.btn.on{background:#fff3ea;color:var(--orange-dark);box-shadow:inset 0 0 0 1.5px var(--orange);}
 .btn{border:none;border-radius:11px;padding:13px 16px;font-size:14px;font-weight:700;flex:1;background:var(--bg-soft);color:var(--text);}
 .btn.primary{background:var(--orange);color:#fff;}
 .btn.danger{background:#fff0ef;color:var(--red);}
@@ -241,7 +242,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.08.19</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.10.26</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -302,6 +303,33 @@ textarea#pointNotes{
     <div class="panel-head">
       <h2>Sites réseau <span id="sitesPanelCount" style="font-family:var(--font-mono);font-size:11px;color:var(--text-mute);font-weight:400;"></span></h2>
       <button id="btnCloseSites">✕</button>
+    </div>
+
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+      <h3 style="font-family:var(--font-head);font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-mute);margin:0 0 8px;">⭐ Sites de la mission</h3>
+      <div id="missionStatus" style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">Aucun site désigné.</div>
+      <div id="missionReport" style="font-size:11px;color:var(--text-mute);line-height:1.5;margin-bottom:8px;"></div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button class="btn" id="btnMissionPaste" style="padding:9px 8px;font-size:11.5px;">✏ Coller une liste</button>
+        <button class="btn" id="btnMissionFile" style="padding:9px 8px;font-size:11.5px;">📥 Excel / CSV</button>
+      </div>
+      <input type="file" id="fileInputMission" accept=".xlsx,.csv,.txt" style="display:none;">
+      <div id="missionPasteBox" style="display:none;margin-bottom:8px;">
+        <textarea id="missionPasteText" rows="5" placeholder="Un site par ligne (ou séparés par virgule / point-virgule)" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;font-family:var(--font-mono);background:var(--bg-soft);color:var(--text);"></textarea>
+        <div style="display:flex;gap:6px;margin-top:6px;">
+          <button class="btn primary" id="btnMissionAdd" style="padding:9px 8px;font-size:11.5px;">Ajouter</button>
+          <button class="btn" id="btnMissionReplace" style="padding:9px 8px;font-size:11.5px;">Remplacer</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <select id="missionZoneSelect" style="flex:1;min-width:0;padding:9px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:var(--bg-soft);color:var(--text);"><option value="">Ajouter une région / un département…</option></select>
+        <button class="btn" id="btnMissionZone" style="flex:none;padding:9px 12px;font-size:11.5px;">＋</button>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn" id="btnMissionOnly" style="padding:9px 8px;font-size:11.5px;">⭐ Seulement</button>
+        <button class="btn" id="btnMissionFit" style="padding:9px 8px;font-size:11.5px;">📍 Cadrer</button>
+        <button class="btn" id="btnMissionClear" style="flex:none;padding:9px 12px;font-size:11.5px;color:#b3261e;">🗑 Vider</button>
+      </div>
     </div>
 
     <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
@@ -895,6 +923,7 @@ async function loadActiveProjectData(){
   mediaBlobs.forEach(mb=>URL.revokeObjectURL(mb.url));
   mediaBlobs.clear();
 
+  loadMissionFromProject();
   const siteRows = await idbGetAll('sites','projectId', activeProjectId);
   NETSITES = siteRows.map(s=>{ const c={...s}; delete c._storeKey; delete c.projectId; return c; });
 
@@ -1148,13 +1177,168 @@ function sectorColor(site,sec){
 }
 const WEDGE_RADIUS_M = 55; // rayon des secteurs, en mètres réels (s'adapte au zoom)
 
+/* =========================================================
+   5A. MISSION — sites à traiter (par projet), indépendants des imports Excel
+   ========================================================= */
+let MISSION = new Map();      // clé normalisée -> libellé d'origine
+let missionOnly = false;
+let missionReport = null;     // {found:n, missing:[noms]} du dernier ajout
+function missionKey(n){ return String(n||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+function isMissionSite(site){ return MISSION.size>0 && (MISSION.has(missionKey(site.name)) || MISSION.has(missionKey(site.id))); }
+function visibleNetSites(){
+  if(missionOnly && MISSION.size) return NETSITES.filter(isMissionSite);
+  return NETSITES.filter(s=>netStatutFilter.has(s.statut));
+}
+function loadMissionFromProject(){
+  const proj = PROJECTS.find(x=>x.id===activeProjectId);
+  MISSION = new Map();
+  ((proj && proj.missionSites) || []).forEach(n=>{ const k=missionKey(n); if(k) MISSION.set(k,String(n)); });
+  missionReport = null;
+  if(!MISSION.size) missionOnly = false;
+}
+async function persistMission(){
+  const proj = PROJECTS.find(x=>x.id===activeProjectId); if(!proj) return;
+  proj.missionSites = [...MISSION.values()];
+  await idbPut('projects', proj);
+}
+function parseMissionNames(text){
+  const seen = new Set(), out = [];
+  String(text||'').split(/[\r\n,;\t]+/).forEach(t=>{
+    const n=t.trim(); const k=missionKey(n);
+    if(k && !seen.has(k)){ seen.add(k); out.push(n); }
+  });
+  return out;
+}
+// names: liste de noms ; replace: remplace la liste existante
+async function applyMissionNames(names, replace){
+  if(!names.length){ toast('Aucun nom de site trouvé'); return; }
+  if(replace) MISSION = new Map();
+  const siteKeys = new Set(); NETSITES.forEach(s=>{ siteKeys.add(missionKey(s.name)); siteKeys.add(missionKey(s.id)); });
+  let found=0; const missing=[];
+  names.forEach(n=>{
+    const k=missionKey(n); if(!k) return;
+    if(siteKeys.has(k)) found++; else missing.push(n);
+    if(!MISSION.has(k)) MISSION.set(k,n);
+  });
+  missionReport = { found, missing, total:names.length };
+  await persistMission();
+  renderSitesAll();
+  if(found){ document.getElementById('sitesPanel').classList.remove('open'); fitMission(); }
+  toast(found+'/'+names.length+' site(s) retrouvé(s)'+(missing.length?' · '+missing.length+' introuvable(s)':''));
+}
+async function toggleMissionSite(site){
+  const k = missionKey(site.name);
+  if(isMissionSite(site)){ MISSION.delete(k); MISSION.delete(missionKey(site.id)); }
+  else MISSION.set(k, site.name);
+  if(!MISSION.size) missionOnly=false;
+  missionReport = null;
+  await persistMission();
+  renderSitesAll();
+}
+function fitMission(){
+  const pts = NETSITES.filter(isMissionSite);
+  if(!pts.length){ toast('Aucun site de la mission sur la carte'); return; }
+  const [W,H] = dims();
+  const minLat=Math.min(...pts.map(x=>x.lat)), maxLat=Math.max(...pts.map(x=>x.lat));
+  const minLon=Math.min(...pts.map(x=>x.lon)), maxLon=Math.max(...pts.map(x=>x.lon));
+  let z=17;
+  for(; z>3; z--){
+    const w=Math.abs(lonToX(maxLon,z)-lonToX(minLon,z)), h=Math.abs(latToY(minLat,z)-latToY(maxLat,z));
+    if(w<=W-90 && h<=H-260) break;
+  }
+  zoom=z; center={ lat:(minLat+maxLat)/2, lon:(minLon+maxLon)/2 };
+  followMode=false; document.getElementById('btnFollow').classList.remove('on');
+  renderMap();
+}
+function updateMissionUI(){
+  const st=document.getElementById('missionStatus'); if(!st) return;
+  const matched = NETSITES.filter(isMissionSite).length;
+  st.textContent = MISSION.size ? ('Mission : '+MISSION.size+' site(s) · '+matched+' sur la carte') : 'Aucun site désigné.';
+  const rep=document.getElementById('missionReport');
+  if(missionReport && missionReport.missing.length){
+    rep.innerHTML = '⚠ Introuvable(s) dans les sites chargés : <b>'+missionReport.missing.slice(0,10).map(n=>n.replace(/</g,'&lt;')).join(', ')+'</b>'+(missionReport.missing.length>10?' … +'+(missionReport.missing.length-10):'')+'<br>Ils restent dans la liste et s\'afficheront dès que le site sera chargé.';
+  } else if(MISSION.size && matched<MISSION.size && NETSITES.length){
+    rep.textContent = (MISSION.size-matched)+' nom(s) de la mission ne correspondent à aucun site chargé.';
+  } else rep.textContent = '';
+  const bo=document.getElementById('btnMissionOnly');
+  bo.classList.toggle('on', missionOnly && MISSION.size>0);
+  bo.disabled = !MISSION.size; bo.style.opacity = MISSION.size?1:.5;
+  // régions / départements disponibles
+  const sel=document.getElementById('missionZoneSelect');
+  const regs=new Set(), deps=new Set();
+  NETSITES.forEach(s=>{ if(s.region) regs.add(s.region); if(s.departement) deps.add(s.departement); });
+  const sig = [...regs].sort().join('|')+'##'+[...deps].sort().join('|');
+  if(sel.dataset.sig!==sig){
+    sel.dataset.sig=sig;
+    sel.innerHTML = '<option value="">Ajouter une région / un département…</option>'
+      + [...regs].sort().map(r=>`<option value="R:${r}">Région · ${r}</option>`).join('')
+      + [...deps].sort().map(d=>`<option value="D:${d}">Département · ${d}</option>`).join('');
+  }
+}
+document.getElementById('btnMissionPaste').addEventListener('click', ()=>{
+  const box=document.getElementById('missionPasteBox');
+  box.style.display = box.style.display==='none' ? 'block' : 'none';
+});
+document.getElementById('btnMissionAdd').addEventListener('click', async ()=>{
+  const ta=document.getElementById('missionPasteText');
+  await applyMissionNames(parseMissionNames(ta.value), false);
+  ta.value='';
+});
+document.getElementById('btnMissionReplace').addEventListener('click', async ()=>{
+  const ta=document.getElementById('missionPasteText');
+  if(MISSION.size && !confirm('Remplacer les '+MISSION.size+' site(s) actuels de la mission ?')) return;
+  await applyMissionNames(parseMissionNames(ta.value), true);
+  ta.value='';
+});
+document.getElementById('btnMissionFile').addEventListener('click', ()=>document.getElementById('fileInputMission').click());
+document.getElementById('fileInputMission').addEventListener('change', async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f) return;
+  try{
+    let names;
+    if(/\.txt$/i.test(f.name)) names = parseMissionNames(await f.text());
+    else {
+      const rows = await readRowsFromFile(f);
+      if(!rows.length) throw new Error('Fichier vide');
+      const heads = rows[0].map(normKey);
+      let col = heads.findIndex(h=>['sites','site','nomsite','nom','name','sitename'].includes(h));
+      const hasHeader = col>=0; if(col<0) col=0;
+      names = parseMissionNames(rows.slice(hasHeader?1:0).map(r=>r[col]).join('\n'));
+    }
+    await applyMissionNames(names, false);
+  }catch(err){ toast('Import impossible : '+err.message); }
+});
+document.getElementById('btnMissionZone').addEventListener('click', async ()=>{
+  const v=document.getElementById('missionZoneSelect').value; if(!v) return;
+  const [t,...rest]=v.split(':'); const val=rest.join(':');
+  const names = NETSITES.filter(s=> t==='R' ? s.region===val : s.departement===val).map(s=>s.name);
+  document.getElementById('missionZoneSelect').value='';
+  await applyMissionNames(names, false);
+});
+document.getElementById('btnMissionOnly').addEventListener('click', ()=>{
+  if(!MISSION.size) return;
+  missionOnly=!missionOnly; renderSitesAll();
+});
+document.getElementById('btnMissionFit').addEventListener('click', ()=>{ sitesPanel.classList.remove('open'); fitMission(); });
+document.getElementById('btnMissionClear').addEventListener('click', async ()=>{
+  if(!MISSION.size) return;
+  if(!confirm('Vider la liste des '+MISSION.size+' site(s) de la mission ?')) return;
+  MISSION=new Map(); missionOnly=false; missionReport=null;
+  await persistMission(); renderSitesAll();
+});
+
 function renderNetSites(parts,W,H){
-  const visible = NETSITES.filter(s=>netStatutFilter.has(s.statut));
+  const visible = visibleNetSites();
   visible.forEach(site=>{
     const [cx,cy] = project(site.lat, site.lon, W, H);
     if(cx<-60||cx>W+60||cy<-60||cy>H+60) return; // hors écran, on ne dessine pas
     const isSel = site.id===selectedSiteId;
     const R = Math.max(10, WEDGE_RADIUS_M/metersPerPixel(center.lat,zoom));
+    const inMission = isMissionSite(site);
+    const dim = MISSION.size>0 && !inMission;
+    if(dim) parts.push('<g opacity="0.35">');
+    if(inMission){
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="19" fill="#FF6600" fill-opacity="0.14" stroke="#FF6600" stroke-width="3" data-site="${site.id}"/>`);
+    }
 
     // zone de tap élargie, invisible — les marqueurs réels sont trop petits pour un doigt
     parts.push(`<circle cx="${cx}" cy="${cy}" r="20" fill="transparent" data-site="${site.id}"/>`);
@@ -1180,7 +1364,10 @@ function renderNetSites(parts,W,H){
     if(isSel){
       parts.push(`<circle cx="${cx}" cy="${cy}" r="13" fill="none" stroke="${STATUT_COLOR[site.statut]}" stroke-width="1.1" opacity="0.6" data-site="${site.id}"/>`);
       parts.push(`<text x="${cx}" y="${cy-18}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="700" fill="#0d0f14" stroke="#fff" stroke-width="3" paint-order="stroke" data-site="${site.id}">${site.name}</text>`);
+    } else if(inMission && zoom>=11){
+      parts.push(`<text x="${cx}" y="${cy-24}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700" fill="#cc4400" stroke="#fff" stroke-width="3" paint-order="stroke" data-site="${site.id}">${site.name}</text>`);
     }
+    if(dim) parts.push('</g>');
   });
 }
 
@@ -1462,9 +1649,11 @@ function renderQuickLayers(){
   wrap.innerHTML = `
     <button data-group="Actif" class="${actifOn?'':'off'}" style="${actifOn?'background:#fff3ea;border-color:#FF6600;color:#cc4400;':''}">🟠 Actifs</button>
     <button data-group="AVenir" class="${avenirOn?'':'off'}" style="${avenirOn?'background:#e6fbfb;border-color:#0098A6;color:#0098A6;':''}">🔷 À venir</button>
+    ${MISSION.size? `<button data-group="Mission" style="${missionOnly?'background:#FF6600;border-color:#FF6600;color:#fff;':'background:#fff3ea;border-color:#FF6600;color:#cc4400;'}">⭐ ${missionOnly?'Mission seule':'Mission'}</button>`:''}
   `;
   wrap.querySelectorAll('button').forEach(b=>b.addEventListener('click', ()=>{
     const group=b.dataset.group;
+    if(group==='Mission'){ missionOnly=!missionOnly; renderSitesAll(); return; }
     const currentlyOn = group==='Actif' ? netStatutFilter.has('Actif') : (netStatutFilter.has('PG')||netStatutFilter.has('Etude'));
     setNetGroupVisible(group, !currentlyOn);
   }));
@@ -1483,7 +1672,8 @@ document.getElementById('netColorToggle').addEventListener('click', e=>{
 
 function renderSitesList(){
   const wrap=document.getElementById('sitesList');
-  const visible = NETSITES.filter(s=>netStatutFilter.has(s.statut));
+  let visible = visibleNetSites();
+  if(MISSION.size) visible = visible.slice().sort((a,b)=>(isMissionSite(b)?1:0)-(isMissionSite(a)?1:0));
   if(!visible.length){
     wrap.innerHTML = '<div class="empty-list">Aucun site chargé.<br>Importe un fichier Excel ci-dessus.</div>';
     return;
@@ -1498,7 +1688,7 @@ function renderSitesList(){
     return `<div class="site-row" data-site="${s.id}">
       <div class="marker ${markerCls}" style="background:${s.statut==='Etude'?'transparent':col};${s.statut==='Etude'?'color:'+col+';':''}">${markerHtml}</div>
       <div class="body">
-        <div class="name">${s.name}</div>
+        <div class="name">${isMissionSite(s)?'⭐ ':''}${s.name}</div>
         <div class="meta">${meta}</div>
         ${s.extensionPrevue? `<span class="ext-flag">⚑ Extension prévue${s.extensionPrevue.programme?' · '+s.extensionPrevue.programme:''}</span>`:''}
       </div>
@@ -1516,6 +1706,7 @@ function renderSitesAll(){
   renderSitesList();
   document.getElementById('sitesPanelCount').textContent = NETSITES.length? '('+NETSITES.length+')' : '';
   document.getElementById('fabSitesCount').textContent = NETSITES.length;
+  updateMissionUI();
   renderMap();
 }
 
@@ -1559,6 +1750,7 @@ function openSiteDetail(id){
   document.getElementById('siteDetailName').textContent = s.name;
   const badges=[`<span class="badge" style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-top:5px;margin-right:5px;background:#fff3ea;color:${STATUT_COLOR[s.statut]};">${STATUT_LABEL[s.statut]}</span>`];
   if(s.constructeur) badges.push(`<span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-top:5px;margin-right:5px;background:${s.constructeur==='Huawei'?'#ffe3e8':'#e3ecfb'};color:${CONSTR_COLOR[s.constructeur]||'#4b5262'};">${s.constructeur}</span>`);
+  if(isMissionSite(s)) badges.push(`<span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-top:5px;margin-right:5px;background:#FF6600;color:#fff;">⭐ Mission</span>`);
   if(s.positionApprox) badges.push(`<span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-top:5px;background:#fff6e0;color:#a9720a;">Position approx.</span>`);
   document.getElementById('siteDetailBadges').innerHTML = badges.join('');
 
@@ -1569,7 +1761,8 @@ function openSiteDetail(id){
     meta += `<br><b style="color:var(--orange-dark);">${km<1? Math.round(km*1000)+' m':km.toFixed(2)+' km'} · cap ${brg}°</b> depuis ta position`;
   }
 
-  let body = `<div class="editor-meta">${meta}</div>`;
+  let body = `<button class="btn ${isMissionSite(s)?'on':''}" id="btnToggleMission" style="width:100%;margin-bottom:10px;padding:10px;font-size:12.5px;">${isMissionSite(s)?'✓ Dans la mission — retirer':'⭐ Ajouter à la mission'}</button>`;
+  body += `<div class="editor-meta">${meta}</div>`;
   if(s.statut==='Actif'){
     body += s.sectors.map(sec=>{
       const mimo = hasMimo(sec) ? '<span style="font-size:9px;font-weight:700;background:var(--text);color:#fff;padding:1px 5px;border-radius:4px;margin-left:5px;">mMIMO</span>' : '';
@@ -1598,6 +1791,10 @@ function openSiteDetail(id){
     </div>`;
   }
   document.getElementById('siteDetailBody').innerHTML = body;
+  document.getElementById('btnToggleMission').addEventListener('click', async ()=>{
+    await toggleMissionSite(s);
+    openSiteDetail(s.id);
+  });
   document.getElementById('siteDetailOverlay').classList.add('open');
   renderMap();
 }
@@ -1843,11 +2040,12 @@ document.getElementById('btnNewProject').addEventListener('click', async ()=>{
 
 /* -------- export du projet actif (manifest.json + photos) -------- */
 document.getElementById('btnExportProject').addEventListener('click', async ()=>{
-  if(!points.length){ toast('Ce projet ne contient encore aucun point'); return; }
+  if(!points.length && !MISSION.size){ toast('Ce projet ne contient encore aucun point ni site de mission'); return; }
   const proj = PROJECTS.find(p=>p.id===activeProjectId);
   const manifest = {
     app:'terrain_notes_mobile', formatVersion:1, exportedAt:Date.now(),
     projectName: proj ? proj.name : '',
+    missionSites: [...MISSION.values()],
     points: points.map(p=>({ id:p.id, name:p.name, lat:p.lat, lon:p.lon, accuracy:p.accuracy, ts:p.ts, notes:p.notes,
       media:p.media.map(m=>({id:m.id, name:m.name, type:m.type})) }))
   };
@@ -1892,15 +2090,17 @@ document.getElementById('fileImportProject').addEventListener('change', async e=
     const existingIds = new Set(points.map(p=>p.id));
     const toAdd = manifest.points.filter(p=>!existingIds.has(p.id));
     const alreadyPresent = manifest.points.length - toAdd.length;
+    const newMission = (Array.isArray(manifest.missionSites)?manifest.missionSites:[]).filter(n=>{ const k=missionKey(n); return k && !MISSION.has(k); });
 
-    _pendingImport = { toAdd, alreadyPresent, manifest, zip };
+    _pendingImport = { toAdd, alreadyPresent, manifest, zip, newMission };
     const body = document.getElementById('importSummaryBody');
     body.innerHTML = `
       <div class="import-summary-row"><span>Points dans le fichier</span><b>${manifest.points.length}</b></div>
       <div class="import-summary-row"><span>Nouveaux — seront ajoutés</span><b style="color:var(--orange-dark);">${toAdd.length}</b></div>
       <div class="import-summary-row"><span>Déjà présents — ignorés</span><b style="color:var(--text-mute);">${alreadyPresent}</b></div>
+      ${Array.isArray(manifest.missionSites)&&manifest.missionSites.length? `<div class="import-summary-row"><span>⭐ Sites de mission à ajouter</span><b style="color:var(--orange-dark);">${newMission.length}</b></div>`:''}
       <p style="font-size:11px;color:var(--text-mute);margin-top:14px;line-height:1.5;">Projet source : « ${manifest.projectName||'—'} ». Import vers : « ${(PROJECTS.find(p=>p.id===activeProjectId)||{}).name||''} ». Aucune donnée existante ne sera modifiée ou écrasée.</p>`;
-    document.getElementById('btnConfirmImport').disabled = toAdd.length===0;
+    document.getElementById('btnConfirmImport').disabled = toAdd.length===0 && newMission.length===0;
     document.getElementById('importSummaryOverlay').classList.add('open');
   }catch(err){
     toast('Import impossible : '+err.message);
@@ -1915,8 +2115,13 @@ document.getElementById('btnCloseImportSummary').addEventListener('click', ()=>{
   document.getElementById('importSummaryOverlay').classList.remove('open');
 });
 document.getElementById('btnConfirmImport').addEventListener('click', async ()=>{
-  if(!_pendingImport || !_pendingImport.toAdd.length) return;
+  if(!_pendingImport || (!_pendingImport.toAdd.length && !(_pendingImport.newMission||[]).length)) return;
   const { toAdd, zip } = _pendingImport;
+  const newMission = _pendingImport.newMission||[];
+  if(newMission.length){
+    newMission.forEach(n=>MISSION.set(missionKey(n), String(n)));
+    await persistMission();
+  }
   for(const p of toAdd){
     const newPoint = { id:p.id, name:p.name, lat:p.lat, lon:p.lon, accuracy:p.accuracy||null, ts:p.ts||Date.now(), notes:p.notes||'', media:p.media||[] };
     points.push(newPoint);
@@ -1935,8 +2140,8 @@ document.getElementById('btnConfirmImport').addEventListener('click', async ()=>
   _pendingImport = null;
   document.getElementById('importSummaryOverlay').classList.remove('open');
   closeProjectPanel();
-  renderAll();
-  toast(toAdd.length+' point(s) importé(s) avec succès');
+  renderAll(); renderSitesAll();
+  toast(toAdd.length+' point(s) importé(s)'+(newMission.length?' · '+newMission.length+' site(s) de mission':'')+' avec succès');
 });
 
 /* =========================================================
