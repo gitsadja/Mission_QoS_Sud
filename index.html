@@ -141,6 +141,14 @@ header .sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text-mute);
   padding-bottom:var(--safe-b);
 }
 #listPanel.open, #sitesPanel.open{transform:translateY(0);}
+/* panneau Sites : tout le panneau défile (la liste en bas ne s'écrase plus), barre de défilement visible */
+#sitesPanel{max-height:88%; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#FF6600 #f0f1f3;}
+#sitesPanel::-webkit-scrollbar{width:6px;}
+#sitesPanel::-webkit-scrollbar-track{background:#f0f1f3;border-radius:3px;}
+#sitesPanel::-webkit-scrollbar-thumb{background:#FF6600;border-radius:3px;}
+#sitesPanel > *{flex:none;}
+#sitesPanel > .panel-head{position:sticky; top:0; z-index:2; background:var(--bg);}
+#sitesList{overflow:visible !important;}
 .panel-handle{width:38px;height:4px;background:var(--border);border-radius:3px;margin:10px auto 4px;}
 .panel-head{display:flex;align-items:center;justify-content:space-between;padding:4px 16px 10px;border-bottom:1px solid var(--border);}
 .panel-head h2{font-family:var(--font-head);font-size:15px;margin:0;}
@@ -242,7 +250,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.10.30</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.10.31</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -1471,6 +1479,10 @@ function updateMissionUI(){
 document.getElementById('btnMissionPaste').addEventListener('click', ()=>{
   const box=document.getElementById('missionPasteBox');
   box.style.display = box.style.display==='none' ? 'block' : 'none';
+  if(box.style.display==='block'){ setTimeout(()=>box.scrollIntoView({block:'nearest',behavior:'smooth'}),60); }
+});
+document.getElementById('missionPasteText').addEventListener('focus', e=>{
+  setTimeout(()=>document.getElementById('btnMissionAdd').scrollIntoView({block:'nearest',behavior:'smooth'}),350);
 });
 document.getElementById('btnMissionAdd').addEventListener('click', async ()=>{
   const ta=document.getElementById('missionPasteText');
