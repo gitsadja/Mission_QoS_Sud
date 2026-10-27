@@ -170,6 +170,21 @@ header .sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text-mute);
 .mbadge{font-size:9.5px;font-family:var(--font-mono);background:var(--bg-softer);border-radius:5px;padding:2px 6px;color:var(--text-soft);}
 .empty-list{padding:30px 16px;text-align:center;color:var(--text-mute);font-size:13px;}
 
+/* ---------- appareil photo intégré ---------- */
+#camOverlay{position:fixed;inset:0;background:#000;z-index:75;display:none;flex-direction:column;}
+#camOverlay.open{display:flex;}
+#camOverlay video{flex:1;min-height:0;width:100%;object-fit:contain;background:#000;}
+#camTop{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:calc(10px + var(--safe-t)) 12px 10px;background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,0));color:#fff;z-index:2;}
+#camTop button{border:none;background:rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:9px 14px;font-size:13px;font-weight:700;}
+#camBottom{position:absolute;left:0;right:0;bottom:0;padding:12px 18px calc(16px + var(--safe-b));background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.65));display:flex;flex-direction:column;gap:12px;z-index:2;}
+#camZoomRow{display:none;align-items:center;gap:10px;color:#fff;font-family:var(--font-mono);font-size:12px;}
+#camZoomRow input{flex:1;accent-color:#FF6600;}
+#camShutterRow{display:flex;align-items:center;justify-content:space-between;}
+#camShutter{width:74px;height:74px;border-radius:50%;border:5px solid #fff;background:#FF6600;box-shadow:0 0 0 3px rgba(255,255,255,.25);}
+#camShutter:active{transform:scale(.93);}
+#camCount{min-width:64px;color:#fff;font-family:var(--font-mono);font-size:12.5px;text-align:left;}
+#camTorch,#camNative{min-width:64px;border:none;background:rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:9px 10px;font-size:12px;font-weight:700;}
+#camFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .15s;z-index:3;}
 /* ---------- editor overlay ---------- */
 #editorOverlay, #siteDetailOverlay, #searchOverlay, #projectOverlay, #importSummaryOverlay{
   position:fixed; inset:0; background:var(--bg); z-index:60; display:none; flex-direction:column;
@@ -250,7 +265,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.11.01</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.11.03</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -463,7 +478,16 @@ textarea#pointNotes{
     </div>
   </div>
 
-  <input type="file" id="fileImg" accept="image/*" capture="environment" multiple>
+  <div id="camOverlay">
+    <video id="camVideo" autoplay playsinline muted></video>
+    <div id="camTop"><button id="btnCamClose">✓ Terminé</button><span id="camInfo" style="font-size:11.5px;font-family:var(--font-mono);"></span><button id="camNative">📱 Appli photo</button></div>
+    <div id="camBottom">
+      <div id="camZoomRow"><span>🔍</span><input type="range" id="camZoom" min="1" max="4" step="0.1" value="1"><span id="camZoomVal">1×</span></div>
+      <div id="camShutterRow"><div id="camCount"></div><button id="camShutter" aria-label="Prendre la photo"></button><button id="camTorch" style="visibility:hidden;">🔦 Flash</button></div>
+    </div>
+    <div id="camFlash"></div>
+  </div>
+  <input type="file" id="fileImg" accept="image/*" capture="environment">
   <input type="file" id="fileVid" accept="video/*" capture="environment">
   <input type="file" id="fileImgGallery" accept="image/*" multiple>
   <div id="toast"></div>
@@ -2281,13 +2305,25 @@ let _fieldsTimer=null;
 function scheduleSaveFields(){ clearTimeout(_fieldsTimer); _fieldsTimer=setTimeout(saveEditorFields, 600); }
 pointNotesInput.addEventListener('input', scheduleSaveFields);
 pointNameInput.addEventListener('input', scheduleSaveFields);
-document.getElementById('btnAddPhoto').addEventListener('click', ()=>{ saveEditorFields(); fileImg.click(); });
+document.getElementById('btnAddPhoto').addEventListener('click', ()=>{ saveEditorFields(); if(camSupported()) openCamera(); else fileImg.click(); });
 document.getElementById('btnAddVideo').addEventListener('click', ()=>{ saveEditorFields(); fileVid.click(); });
 document.getElementById('btnImportPhotos').addEventListener('click', ()=>{ saveEditorFields(); fileImgGallery.click(); });
 
 function safeName(s){ return (s||'point').replace(/[^a-z0-9_-]+/gi,'_').slice(0,40); }
 
 let _attachBusy=false;
+// enregistre un média (déjà réduit) dans le point : IndexedDB d'abord, puis mémoire + point
+async function saveMedia(p, kind, blob, thumb, ext, download, mimeFallback){
+  const mid=uid();
+  const fname = `${safeName(p.name)}_${kind}${p.media.filter(m=>m.type===kind).length+1}.${ext}`;
+  await idbPut('photos', { id:mid, pointId:p.id, projectId:activeProjectId, name:fname, type:kind, mimeType:blob.type||mimeFallback||'', blob, thumb });
+  mediaBlobs.set(mid, { blob, url: kind==='video' ? URL.createObjectURL(blob) : null, thumbUrl: thumb ? URL.createObjectURL(thumb) : null, type:kind });
+  p.media.push({ id:mid, name:fname, type:kind });
+  await persistPoint(p);
+  if(download) downloadBlobFile(fname, blob);
+  if(editingPointId===p.id){ renderMediaGrid(p); } renderStats();
+  return fname;
+}
 // download=true : prise de vue (copie de sécurité téléchargée) ; false : import depuis la galerie
 async function attachFiles(fileList, kind, download){
   const p = points.find(x=>x.id===editingPointId); if(!p) return;
@@ -2301,20 +2337,101 @@ async function attachFiles(fileList, kind, download){
       try{
         let blob=file, thumb=null, ext=(file.name.split('.').pop()||(kind==='image'?'jpg':'mp4')).toLowerCase();
         if(kind==='image'){ const r=await processImageFile(file); blob=r.blob; thumb=r.thumb; if(r.compressed) ext='jpg'; }
-        const mid=uid();
-        const fname = `${safeName(p.name)}_${kind}${p.media.filter(m=>m.type===kind).length+1}.${ext}`;
-        await idbPut('photos', { id:mid, pointId:p.id, projectId:activeProjectId, name:fname, type:kind, mimeType:blob.type||file.type||'', blob, thumb });
-        mediaBlobs.set(mid, { blob, url: kind==='video' ? URL.createObjectURL(blob) : null, thumbUrl: thumb ? URL.createObjectURL(thumb) : null, type:kind });
-        p.media.push({ id:mid, name:fname, type:kind });
-        await persistPoint(p);
-        if(download) downloadBlobFile(fname, blob);
+        await saveMedia(p, kind, blob, thumb, ext, download, file.type);
         ok++;
-        if(editingPointId===p.id){ renderMediaGrid(p); } renderStats();
       }catch(e){ failed++; console.error(e); }
     }
   } finally { _attachBusy=false; }
   toast(ok ? ((kind==='image'?'Photo(s)':'Vidéo(s)')+' ajoutée(s) : '+ok+(failed?' · '+failed+' échec(s)':'')+(download?' · copie téléchargée':'')) : 'Échec : fichier non enregistré (espace insuffisant ?)');
 }
+
+/* ---- appareil photo intégré : reste dans l'appli (plus de page tuée en arrière-plan), caméra arrière imposée, zoom ---- */
+const camOverlay=document.getElementById('camOverlay'), camVideo=document.getElementById('camVideo');
+let camStream=null, camTrack=null, camShots=0, camBusy=false, camWanted=false, camTorchOn=false;
+function camSupported(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
+function camStop(){
+  if(camStream){ camStream.getTracks().forEach(t=>{ try{t.stop();}catch(e){} }); }
+  camStream=null; camTrack=null; camVideo.srcObject=null; camTorchOn=false;
+}
+async function camStart(){
+  camStop();
+  let stream=null;
+  const tries=[
+    { video:{ facingMode:{exact:'environment'}, width:{ideal:2560}, height:{ideal:1920} }, audio:false },
+    { video:{ facingMode:{ideal:'environment'}, width:{ideal:2560}, height:{ideal:1920} }, audio:false },
+    { video:true, audio:false }
+  ];
+  let lastErr=null;
+  for(const c of tries){
+    try{ stream=await navigator.mediaDevices.getUserMedia(c); break; }catch(e){ lastErr=e; if(e && (e.name==='NotAllowedError'||e.name==='SecurityError')) break; }
+  }
+  if(!stream) throw lastErr||new Error('Caméra indisponible');
+  camStream=stream; camTrack=stream.getVideoTracks()[0]; camVideo.srcObject=stream;
+  try{ await camVideo.play(); }catch(e){}
+  // zoom et flash selon ce que l'appareil propose
+  const caps=(camTrack.getCapabilities&&camTrack.getCapabilities())||{};
+  const zr=document.getElementById('camZoomRow'), z=document.getElementById('camZoom');
+  if(caps.zoom){
+    z.min=caps.zoom.min; z.max=Math.min(caps.zoom.max, 10); z.step=caps.zoom.step||0.1;
+    const cur=(camTrack.getSettings&&camTrack.getSettings().zoom)||caps.zoom.min; z.value=cur;
+    document.getElementById('camZoomVal').textContent=(+cur).toFixed(1)+'×'; zr.style.display='flex';
+  } else zr.style.display='none';
+  document.getElementById('camTorch').style.visibility = caps.torch ? 'visible' : 'hidden';
+  const st=camTrack.getSettings?camTrack.getSettings():{};
+  document.getElementById('camInfo').textContent = (st.width&&st.height) ? st.width+'×'+st.height : '';
+}
+async function openCamera(){
+  const p=points.find(x=>x.id===editingPointId); if(!p) return;
+  saveEditorFields();
+  camShots=0; document.getElementById('camCount').textContent='';
+  camOverlay.classList.add('open'); camWanted=true;
+  try{ await camStart(); }
+  catch(e){
+    camOverlay.classList.remove('open'); camWanted=false; camStop();
+    toast("Caméra intégrée indisponible ("+(e&&e.name?e.name:'erreur')+") — ouverture de l'appli photo du téléphone");
+    fileImg.click();
+  }
+}
+function closeCamera(){
+  camWanted=false; camStop(); camOverlay.classList.remove('open');
+  if(camShots) toast(camShots+' photo(s) enregistrée(s) sur ce point');
+}
+async function camShoot(){
+  if(!camStream || camBusy || !camVideo.videoWidth) return;
+  const p=points.find(x=>x.id===editingPointId); if(!p){ closeCamera(); return; }
+  camBusy=true;
+  try{
+    const fl=document.getElementById('camFlash'); fl.style.opacity='.85'; setTimeout(()=>fl.style.opacity='0',120);
+    if(navigator.vibrate) navigator.vibrate(25);
+    const vw=camVideo.videoWidth, vh=camVideo.videoHeight, sc=Math.min(1, IMG_MAX_SIDE/Math.max(vw,vh));
+    const cv=document.createElement('canvas'); cv.width=Math.round(vw*sc); cv.height=Math.round(vh*sc);
+    cv.getContext('2d').drawImage(camVideo,0,0,cv.width,cv.height);
+    const blob=await canvasToBlob(cv, IMG_QUALITY);
+    const thumb=await canvasToBlob(shrinkCanvas(cv, THUMB_SIDE), 0.7);
+    freeCanvas(cv);
+    if(!blob) throw new Error('capture impossible');
+    await saveMedia(p,'image',blob,thumb,'jpg',true,'image/jpeg');
+    camShots++; document.getElementById('camCount').textContent='📷 '+camShots;
+  }catch(e){ console.error(e); toast('Photo non enregistrée : '+(e&&e.message?e.message:'erreur')); }
+  finally{ camBusy=false; }
+}
+document.getElementById('camShutter').addEventListener('click', camShoot);
+document.getElementById('btnCamClose').addEventListener('click', closeCamera);
+document.getElementById('camNative').addEventListener('click', ()=>{ closeCamera(); fileImg.click(); });
+document.getElementById('camZoom').addEventListener('input', async e=>{
+  const v=+e.target.value; document.getElementById('camZoomVal').textContent=v.toFixed(1)+'×';
+  try{ if(camTrack) await camTrack.applyConstraints({advanced:[{zoom:v}]}); }catch(_){}
+});
+document.getElementById('camTorch').addEventListener('click', async ()=>{
+  camTorchOn=!camTorchOn;
+  try{ if(camTrack) await camTrack.applyConstraints({advanced:[{torch:camTorchOn}]}); }catch(_){ camTorchOn=false; }
+  document.getElementById('camTorch').style.background = camTorchOn ? '#FF6600' : 'rgba(255,255,255,.18)';
+});
+// l'app passe en arrière-plan : on libère la caméra ; au retour on la relance
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){ if(camStream) camStop(); }
+  else if(camWanted && camOverlay.classList.contains('open')){ camStart().catch(()=>{ closeCamera(); }); }
+});
 fileImg.addEventListener('change', e=>{ const f=e.target.files; if(f && f.length) attachFiles(f,'image',true); e.target.value=''; });
 fileVid.addEventListener('change', e=>{ const f=e.target.files; if(f && f.length) attachFiles(f,'video',true); e.target.value=''; });
 fileImgGallery.addEventListener('change', e=>{ const f=e.target.files; if(f && f.length) attachFiles(f,'image',false); e.target.value=''; });
