@@ -240,7 +240,7 @@ textarea#pointNotes{
 }
 #toast.show{opacity:1;}
 
-#fileImg,#fileVid{display:none;}
+#fileImg,#fileVid,#fileImgGallery{display:none;}
 ::-webkit-scrollbar{width:0;height:0;}
 </style>
 </head>
@@ -250,7 +250,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.10.31</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.11.01</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -452,6 +452,7 @@ textarea#pointNotes{
       <textarea id="pointNotes" placeholder="Observations sur ce point…"></textarea>
       <div class="media-btn-row">
         <button class="media-btn" id="btnAddPhoto"><span class="ic">📷</span>Photo</button>
+        <button class="media-btn" id="btnImportPhotos"><span class="ic">🖼</span>Galerie</button>
         <button class="media-btn" id="btnAddVideo"><span class="ic">🎥</span>Vidéo</button>
       </div>
       <div class="media-grid" id="mediaGrid"></div>
@@ -464,6 +465,7 @@ textarea#pointNotes{
 
   <input type="file" id="fileImg" accept="image/*" capture="environment" multiple>
   <input type="file" id="fileVid" accept="video/*" capture="environment">
+  <input type="file" id="fileImgGallery" accept="image/*" multiple>
   <div id="toast"></div>
 </div>
 
@@ -1118,7 +1120,7 @@ async function loadActiveProjectData(){
   const pts = await idbGetAll('points','projectId', activeProjectId);
   points = pts.sort((a,b)=>a.ts-b.ts);
   pointCounter = points.length;
-  mediaBlobs.forEach(mb=>URL.revokeObjectURL(mb.url));
+  mediaBlobs.forEach(mb=>{ if(mb.url) URL.revokeObjectURL(mb.url); if(mb.thumbUrl) URL.revokeObjectURL(mb.thumbUrl); });
   mediaBlobs.clear();
 
   loadMissionFromProject();
@@ -1821,7 +1823,7 @@ btnMark.addEventListener('click', ()=>{
 async function deletePoint(id){
   const p = points.find(x=>x.id===id);
   if(p){
-    p.media.forEach(m=>{ const mb=mediaBlobs.get(m.id); if(mb){ URL.revokeObjectURL(mb.url); mediaBlobs.delete(m.id); } });
+    p.media.forEach(m=>releaseMedia(m.id));
     await idbDeleteByIndex('photos','pointId', id);
   }
   points = points.filter(x=>x.id!==id);
@@ -1971,7 +1973,9 @@ function openSiteDetail(id){
     meta += `<br><b style="color:var(--orange-dark);">${km<1? Math.round(km*1000)+' m':km.toFixed(2)+' km'} · cap ${brg}°</b> depuis ta position`;
   }
 
-  let body = `<button class="btn ${isMissionSite(s)?'on':''}" id="btnToggleMission" style="width:100%;margin-bottom:10px;padding:10px;font-size:12.5px;">${isMissionSite(s)?'✓ Dans la mission — retirer':'⭐ Ajouter à la mission'}</button>`;
+  const existingPt = points.find(x=>x.name===s.name || x.name.startsWith(s.name+' '));
+  let body = `<button class="btn primary" id="btnPhotosSite" style="width:100%;margin-bottom:8px;padding:10px;font-size:12.5px;">${existingPt?'📷 Ouvrir le point « '+existingPt.name+' »':'📷 Photos / notes pour ce site'}</button>`;
+  body += `<button class="btn ${isMissionSite(s)?'on':''}" id="btnToggleMission" style="width:100%;margin-bottom:10px;padding:10px;font-size:12.5px;">${isMissionSite(s)?'✓ Dans la mission — retirer':'⭐ Ajouter à la mission'}</button>`;
   body += `<div class="editor-meta">${meta}</div>`;
   if(s.statut==='Actif'){
     body += s.sectors.map(sec=>{
@@ -2001,6 +2005,16 @@ function openSiteDetail(id){
     </div>`;
   }
   document.getElementById('siteDetailBody').innerHTML = body;
+  document.getElementById('btnPhotosSite').addEventListener('click', ()=>{
+    let pt = points.find(x=>x.name===s.name || x.name.startsWith(s.name+' '));
+    if(!pt){
+      pt = addPoint(s.lat, s.lon, null, false);
+      pt.name = s.name; pt.notes = 'Site : '+s.name; persistPoint(pt);
+    }
+    selectedSiteId=null;
+    document.getElementById('siteDetailOverlay').classList.remove('open');
+    openEditor(pt.id);
+  });
   document.getElementById('btnToggleMission').addEventListener('click', async ()=>{
     await toggleMissionSite(s);
     openSiteDetail(s.id);
@@ -2063,6 +2077,7 @@ function openEditor(id){
   const p = points.find(x=>x.id===id); if(!p) return;
   cancelPointConfirm();
   editingPointId=id; selectedPointId=id;
+  idbPut('meta',{key:'editingPointId',value:id}).catch(()=>{});
   pointNameInput.value=p.name;
   pointNotesInput.value=p.notes;
   document.getElementById('editorMeta').innerHTML =
@@ -2077,6 +2092,7 @@ function closeEditor(){
     if(p){ p.name = pointNameInput.value.trim()||p.name; p.notes = pointNotesInput.value; persistPoint(p); }
   }
   editingPointId=null;
+  idbDelete('meta','editingPointId').catch(()=>{});
   editorOverlay.classList.remove('open');
   renderAll();
 }
@@ -2087,6 +2103,7 @@ document.getElementById('btnDeletePoint').addEventListener('click', ()=>{
   if(confirm('Supprimer ce point et ses médias ?')){
     deletePoint(editingPointId);
     editingPointId=null;
+    idbDelete('meta','editingPointId').catch(()=>{});
     editorOverlay.classList.remove('open');
   }
 });
@@ -2100,24 +2117,37 @@ async function renderMediaGrid(p){
     ev.stopPropagation();
     const mid=btn.dataset.del;
     const p2=points.find(x=>x.id===editingPointId);
-    const mb=mediaBlobs.get(mid); if(mb){ URL.revokeObjectURL(mb.url); mediaBlobs.delete(mid); }
+    releaseMedia(mid);
     p2.media = p2.media.filter(m=>m.id!==mid);
     await idbDelete('photos', mid);
     persistPoint(p2); renderMediaGrid(p2); renderStats();
   }));
   // charge (ou récupère du cache mémoire) chaque vignette, sans bloquer l'affichage initial
+  // IMPORTANT : pour une image on n'affiche JAMAIS le fichier plein format (décodage énorme) — uniquement la vignette
   for(const m of p.media){
     let mb = mediaBlobs.get(m.id);
-    if(!mb){
+    if(!mb || (m.type==='image' && !mb.thumbUrl && !mb.noThumb)){
       try{
         const rec = await idbGet('photos', m.id);
-        if(rec && rec.blob){ mb = { blob:rec.blob, url:URL.createObjectURL(rec.blob), type:m.type }; mediaBlobs.set(m.id, mb); }
+        if(rec && rec.blob){
+          let thumb = rec.thumb;
+          if(m.type==='image' && !thumb){
+            thumb = await makeThumb(rec.blob);
+            if(thumb) idbPut('photos', { ...rec, thumb }).catch(()=>{});
+          }
+          if(mb){ if(mb.thumbUrl) URL.revokeObjectURL(mb.thumbUrl); }
+          mb = { blob:rec.blob, url: m.type==='video' ? URL.createObjectURL(rec.blob) : null, thumbUrl: thumb ? URL.createObjectURL(thumb) : null, noThumb:!thumb, type:m.type };
+          mediaBlobs.set(m.id, mb);
+        }
       }catch(e){ /* photo indisponible */ }
     }
     const cell = document.getElementById('mediaThumb_'+m.id);
     if(!cell) continue; // l'éditeur a pu être fermé entre-temps
     if(mb){
-      cell.querySelector('div').outerHTML = m.type==='image' ? `<img src="${mb.url}">` : `<video src="${mb.url}" muted></video>`;
+      const inner = m.type==='image'
+        ? (mb.thumbUrl ? `<img src="${mb.thumbUrl}" loading="lazy">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:22px;">🖼</div>`)
+        : `<video src="${mb.url}" muted preload="metadata"></video>`;
+      cell.querySelector('div').outerHTML = inner;
     } else {
       cell.querySelector('div').innerHTML = 'photo<br>indisponible';
     }
@@ -2125,34 +2155,169 @@ async function renderMediaGrid(p){
 }
 
 /* =========================================================
-   9. CAPTURE PHOTO / VIDÉO — téléchargement immédiat + aperçu mémoire
+   9. CAPTURE PHOTO / VIDÉO — réduction avant stockage (évite les plantages mémoire)
    ========================================================= */
-const fileImg=document.getElementById('fileImg'), fileVid=document.getElementById('fileVid');
-document.getElementById('btnAddPhoto').addEventListener('click', ()=>fileImg.click());
-document.getElementById('btnAddVideo').addEventListener('click', ()=>fileVid.click());
+// Une photo « zoomée » peut faire 50 à 200 Mpx : l'afficher telle quelle (même en vignette) demande plusieurs centaines de Mo
+// pour la décoder et fait tuer la page par le navigateur. On la décode donc DIRECTEMENT à taille réduite (createImageBitmap + resize),
+// on stocke une version 2560 px + une vignette, et on ne montre jamais que la vignette.
+const IMG_MAX_SIDE = 2560, IMG_QUALITY = 0.85, THUMB_SIDE = 240;
+const fileImg=document.getElementById('fileImg'), fileVid=document.getElementById('fileVid'), fileImgGallery=document.getElementById('fileImgGallery');
+
+async function readJpegInfo(file){
+  const buf=new Uint8Array(await file.slice(0,393216).arrayBuffer());
+  if(buf[0]!==0xFF || buf[1]!==0xD8) return null;
+  const u16=(o,le)=> le ? (buf[o]|(buf[o+1]<<8)) : ((buf[o]<<8)|buf[o+1]);
+  let i=2, orient=1, w=0, h=0;
+  while(i+4<buf.length){
+    if(buf[i]!==0xFF){ i++; continue; }
+    const mk=buf[i+1];
+    if(mk===0xFF){ i++; continue; }
+    if(mk===0xD8||mk===0x01||(mk>=0xD0&&mk<=0xD7)){ i+=2; continue; }
+    const len=u16(i+2,false);
+    if(mk===0xE1 && buf[i+4]===0x45 && buf[i+5]===0x78 && buf[i+6]===0x69 && buf[i+7]===0x66){
+      const t=i+10, le=buf[t]===0x49;
+      const off = le ? (buf[t+4]|(buf[t+5]<<8)|(buf[t+6]<<16)|(buf[t+7]<<24)) : ((buf[t+4]<<24)|(buf[t+5]<<16)|(buf[t+6]<<8)|buf[t+7]);
+      const ifd=t+off, n=u16(ifd,le);
+      for(let k=0;k<n;k++){ const e=ifd+2+k*12; if(e+12>buf.length) break; if(u16(e,le)===0x0112){ orient=u16(e+8,le); break; } }
+    }
+    if(mk>=0xC0 && mk<=0xCF && mk!==0xC4 && mk!==0xC8 && mk!==0xCC){ h=u16(i+5,false); w=u16(i+7,false); break; }
+    i+=2+len;
+  }
+  return (w&&h) ? {w,h,orient} : null;
+}
+// Selon le navigateur, createImageBitmap applique ou non l'orientation EXIF malgré imageOrientation:'none' — on le détecte une fois avec une mini image (2x1 px, EXIF 6).
+const EXIF_PROBE_B64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/4QAiRXhpZgAATU0AKgAAAAgAAQESAAMAAAABAAYAAAAAAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAIDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD4H8Q/8h/Uv+vmX/0M0UUV/ptkP/Ipwn/XuH/pKPAzr/kZ4r/r5P8A9KZ//9k=";
+let _exifAutoPromise=null;
+function exifAuto(){
+  if(!_exifAutoPromise){
+    _exifAutoPromise=(async()=>{
+      try{
+        const bin=atob(EXIF_PROBE_B64), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+        const bm=await createImageBitmap(new Blob([u],{type:'image/jpeg'}),{imageOrientation:'none'});
+        const auto=(bm.width===1 && bm.height===2); if(bm.close) bm.close(); return auto;
+      }catch(e){ return false; }
+    })();
+  }
+  return _exifAutoPromise;
+}
+// renvoie un <canvas> à l'endroit (EXIF appliqué), côté max <= maxSide, ou null si impossible
+async function decodeScaled(file, maxSide){
+  if(typeof createImageBitmap!=='function') return null;
+  const info=await readJpegInfo(file); if(!info) return null;
+  const o=info.orient, swap=o>=5&&o<=8;
+  const scale=Math.min(1, maxSide/Math.max(info.w,info.h));
+  const auto=await exifAuto();
+  // taille demandée : dans le repère de l'image à l'endroit si le navigateur applique l'EXIF tout seul, sinon dans le repère brut
+  const W=swap?info.h:info.w, H=swap?info.w:info.h;
+  const tw=Math.max(1,Math.round((auto?W:info.w)*scale)), th=Math.max(1,Math.round((auto?H:info.h)*scale));
+  const bmp=await createImageBitmap(file,{resizeWidth:tw,resizeHeight:th,resizeQuality:'high',imageOrientation:'none'});
+  if(auto){
+    const cv=document.createElement('canvas'); cv.width=bmp.width; cv.height=bmp.height;
+    cv.getContext('2d').drawImage(bmp,0,0); if(bmp.close) bmp.close(); return cv;
+  }
+  const cw=swap?bmp.height:bmp.width, ch=swap?bmp.width:bmp.height;
+  const cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+  const ctx=cv.getContext('2d');
+  switch(o){
+    case 2: ctx.transform(-1,0,0,1,cw,0); break;
+    case 3: ctx.transform(-1,0,0,-1,cw,ch); break;
+    case 4: ctx.transform(1,0,0,-1,0,ch); break;
+    case 5: ctx.transform(0,1,1,0,0,0); break;
+    case 6: ctx.transform(0,1,-1,0,cw,0); break;
+    case 7: ctx.transform(0,-1,-1,0,cw,ch); break;
+    case 8: ctx.transform(0,-1,1,0,0,ch); break;
+  }
+  ctx.drawImage(bmp,0,0);
+  if(bmp.close) bmp.close();
+  return cv;
+}
+function canvasToBlob(cv, q){ return new Promise(res=>cv.toBlob(b=>res(b),'image/jpeg',q)); }
+function shrinkCanvas(cv, side){
+  const sc=Math.min(1, side/Math.max(cv.width,cv.height));
+  const c2=document.createElement('canvas'); c2.width=Math.max(1,Math.round(cv.width*sc)); c2.height=Math.max(1,Math.round(cv.height*sc));
+  c2.getContext('2d').drawImage(cv,0,0,c2.width,c2.height); return c2;
+}
+function freeCanvas(cv){ try{ cv.width=0; cv.height=0; }catch(e){} }
+async function makeThumb(file){
+  try{
+    const cv=await decodeScaled(file, THUMB_SIDE);
+    if(cv){ const t=await canvasToBlob(cv,0.7); freeCanvas(cv); return t; }
+  }catch(e){}
+  try{ // formats non JPEG (PNG, WebP…) : seulement si le fichier reste raisonnable
+    if(file.size<8*1048576 && typeof createImageBitmap==='function'){
+      const bmp=await createImageBitmap(file,{resizeWidth:THUMB_SIDE,resizeQuality:'medium'});
+      const cv=document.createElement('canvas'); cv.width=bmp.width; cv.height=bmp.height; cv.getContext('2d').drawImage(bmp,0,0);
+      if(bmp.close) bmp.close(); const t=await canvasToBlob(cv,0.7); freeCanvas(cv); return t;
+    }
+  }catch(e){}
+  return null;
+}
+async function processImageFile(file){
+  let full=null;
+  try{ full=await decodeScaled(file, IMG_MAX_SIDE); }catch(e){ full=null; }
+  if(!full) return { blob:file, thumb:await makeThumb(file), compressed:false };
+  const blob=await canvasToBlob(full, IMG_QUALITY);
+  const thumb=await canvasToBlob(shrinkCanvas(full, THUMB_SIDE), 0.7);
+  freeCanvas(full);
+  return { blob:blob||file, thumb, compressed:!!blob };
+}
+function downloadBlobFile(filename, blob){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(a.href), 8000);
+}
+function releaseMedia(mid){
+  const mb=mediaBlobs.get(mid);
+  if(mb){ if(mb.url) URL.revokeObjectURL(mb.url); if(mb.thumbUrl) URL.revokeObjectURL(mb.thumbUrl); mediaBlobs.delete(mid); }
+}
+
+// sauvegarde immédiate du point en cours (avant d'ouvrir l'appareil photo : le navigateur peut tuer la page pendant la prise de vue)
+function saveEditorFields(){
+  const p=points.find(x=>x.id===editingPointId); if(!p) return;
+  p.name = pointNameInput.value.trim()||p.name; p.notes = pointNotesInput.value;
+  persistPoint(p);
+}
+let _fieldsTimer=null;
+function scheduleSaveFields(){ clearTimeout(_fieldsTimer); _fieldsTimer=setTimeout(saveEditorFields, 600); }
+pointNotesInput.addEventListener('input', scheduleSaveFields);
+pointNameInput.addEventListener('input', scheduleSaveFields);
+document.getElementById('btnAddPhoto').addEventListener('click', ()=>{ saveEditorFields(); fileImg.click(); });
+document.getElementById('btnAddVideo').addEventListener('click', ()=>{ saveEditorFields(); fileVid.click(); });
+document.getElementById('btnImportPhotos').addEventListener('click', ()=>{ saveEditorFields(); fileImgGallery.click(); });
 
 function safeName(s){ return (s||'point').replace(/[^a-z0-9_-]+/gi,'_').slice(0,40); }
 
-async function attachFiles(fileList, kind){
+let _attachBusy=false;
+// download=true : prise de vue (copie de sécurité téléchargée) ; false : import depuis la galerie
+async function attachFiles(fileList, kind, download){
   const p = points.find(x=>x.id===editingPointId); if(!p) return;
-  let n=1;
-  for(const file of fileList){
-    const mid=uid();
-    const ext = (file.name.split('.').pop()||(kind==='image'?'jpg':'mp4')).toLowerCase();
-    const fname = `${safeName(p.name)}_${kind}${p.media.filter(m=>m.type===kind).length+n}.${ext}`;
-    mediaBlobs.set(mid, { blob:file, url:URL.createObjectURL(file), type:kind });
-    p.media.push({ id:mid, name:fname, type:kind });
-    // persistance durable (IndexedDB) pour l'export du projet, EN PLUS du téléchargement immédiat ci-dessous
-    idbPut('photos', { id:mid, pointId:p.id, projectId:activeProjectId, name:fname, type:kind, mimeType:file.type||'', blob:file }).catch(()=>{});
-    // téléchargement immédiat — sécurité si la session se ferme avant l'export groupé
-    downloadBytes(fname, new Uint8Array(await file.arrayBuffer()), file.type||'application/octet-stream');
-    n++;
-  }
-  persistPoint(p); renderMediaGrid(p); renderStats();
-  toast((kind==='image'?'Photo(s)':'Vidéo(s)')+' ajoutée(s), sauvegardée(s) et téléchargée(s)');
+  if(_attachBusy){ toast('Un traitement est déjà en cours…'); return; }
+  _attachBusy=true;
+  const files=Array.from(fileList); let ok=0, failed=0;
+  try{
+    for(let idx=0; idx<files.length; idx++){
+      const file=files[idx];
+      if(files.length>1) toast('Traitement '+(idx+1)+'/'+files.length+'…');
+      try{
+        let blob=file, thumb=null, ext=(file.name.split('.').pop()||(kind==='image'?'jpg':'mp4')).toLowerCase();
+        if(kind==='image'){ const r=await processImageFile(file); blob=r.blob; thumb=r.thumb; if(r.compressed) ext='jpg'; }
+        const mid=uid();
+        const fname = `${safeName(p.name)}_${kind}${p.media.filter(m=>m.type===kind).length+1}.${ext}`;
+        await idbPut('photos', { id:mid, pointId:p.id, projectId:activeProjectId, name:fname, type:kind, mimeType:blob.type||file.type||'', blob, thumb });
+        mediaBlobs.set(mid, { blob, url: kind==='video' ? URL.createObjectURL(blob) : null, thumbUrl: thumb ? URL.createObjectURL(thumb) : null, type:kind });
+        p.media.push({ id:mid, name:fname, type:kind });
+        await persistPoint(p);
+        if(download) downloadBlobFile(fname, blob);
+        ok++;
+        if(editingPointId===p.id){ renderMediaGrid(p); } renderStats();
+      }catch(e){ failed++; console.error(e); }
+    }
+  } finally { _attachBusy=false; }
+  toast(ok ? ((kind==='image'?'Photo(s)':'Vidéo(s)')+' ajoutée(s) : '+ok+(failed?' · '+failed+' échec(s)':'')+(download?' · copie téléchargée':'')) : 'Échec : fichier non enregistré (espace insuffisant ?)');
 }
-fileImg.addEventListener('change', e=>{ if(e.target.files.length) attachFiles(e.target.files,'image'); e.target.value=''; });
-fileVid.addEventListener('change', e=>{ if(e.target.files.length) attachFiles(e.target.files,'video'); e.target.value=''; });
+fileImg.addEventListener('change', e=>{ const f=e.target.files; if(f && f.length) attachFiles(f,'image',true); e.target.value=''; });
+fileVid.addEventListener('change', e=>{ const f=e.target.files; if(f && f.length) attachFiles(f,'video',true); e.target.value=''; });
+fileImgGallery.addEventListener('change', e=>{ const f=e.target.files; if(f && f.length) attachFiles(f,'image',false); e.target.value=''; });
 
 /* =========================================================
    10. EXPORT
@@ -2700,6 +2865,11 @@ if('serviceWorker' in navigator){
   renderAll();
   renderSitesAll();
   startGeo();
+  // si la page a été tuée pendant la prise de photo, on revient directement sur le point en cours
+  try{
+    const e=await idbGet('meta','editingPointId');
+    if(e && points.some(x=>x.id===e.value)){ openEditor(e.value); toast('Retour sur le point en cours'); }
+  }catch(_){}
 })();
 
 })();
