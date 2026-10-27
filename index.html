@@ -242,7 +242,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.10.29</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.10.30</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -679,6 +679,7 @@ async function openXlsxFile(file){
   if(eocd<0){
     const head=new Uint8Array(await file.slice(0,8).arrayBuffer());
     const hex=Array.from(head).map(x=>x.toString(16).padStart(2,'0')).join('');
+    if(looksEncrypted(new Uint8Array(await file.slice(0,80).arrayBuffer()))) throw new Error(ENCRYPTED_MSG);
     if(hex.startsWith('d0cf11e0a1b11ae1')) throw new Error("Ce fichier est protégé (mot de passe ou étiquette de confidentialité Office) ou c'est un ancien format .xls : l'appli ne peut pas le lire. Ouvre-le dans Excel et enregistre une copie .xlsx non protégée.");
     if(head[0]===0x50 && head[1]===0x4b) throw new Error("Le fichier est incomplet (copie tronquée : "+(size>=1048576?(size/1048576).toFixed(1)+" Mo":Math.round(size/1024)+" Ko")+" reçus). Si le fichier est sur OneDrive, télécharge-le d'abord sur le téléphone (« Toujours conserver sur cet appareil »), puis réessaie.");
     const txt=new TextDecoder('utf-8').decode(head);
@@ -772,23 +773,40 @@ async function readXlsxRows(file){
   const wb=await openXlsxFile(file);
   return await wb.rows(0);
 }
-function parseCSVLine(line){
+function parseCSVLine(line,d){
+  d=d||',';
   const out=[]; let cur=''; let q=false;
   for(let i=0;i<line.length;i++){
     const c=line[i];
     if(q){ if(c==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
-    else { if(c==='"') q=true; else if(c===','){ out.push(cur); cur=''; } else cur+=c; }
+    else { if(c==='"') q=true; else if(c===d){ out.push(cur); cur=''; } else cur+=c; }
   }
   out.push(cur); return out;
 }
 function normKey(h){ return (h||'').trim().toLowerCase().replace(/\s+/g,''); }
+const ENCRYPTED_MSG = "Ce fichier est CHIFFRÉ par la protection de l'entreprise (Intune / MAM : en-tête « MSMAMARPCRYPT »). Seules les applis gérées (Outlook, OneDrive pro, Edge) peuvent le lire ; l'appli, elle, ne voit que du charabia. Ouvre-le dans l'appli gérée et enregistre une copie non protégée, ou utilise « Coller une liste » (copie les noms depuis le fichier ouvert).";
+function looksEncrypted(u8){
+  const head=new TextDecoder('windows-1252').decode(u8.subarray(0,80));
+  return /MSMAMARPCRYPT|AES\/CBC\/NoPadding/.test(head);
+}
+async function readTextSmart(file){
+  const u=new Uint8Array(await file.arrayBuffer());
+  if(looksEncrypted(u)) throw new Error(ENCRYPTED_MSG);
+  let txt;
+  try{ txt=new TextDecoder('utf-8',{fatal:true}).decode(u); }catch(e){ txt=new TextDecoder('windows-1252').decode(u); }
+  return txt.replace(/^\uFEFF/,'');
+}
 async function readRowsFromFile(file){
   const name=(file.name||'').toLowerCase();
   if(name.endsWith('.xlsx')||name.endsWith('.xlsm')){ return await readXlsxRows(file); }
   if(name.endsWith('.xlsb')||name.endsWith('.xls')) throw new Error('Format .xls/.xlsb non lisible : enregistre le fichier en .xlsx depuis Excel.');
   if(name.endsWith('.csv')){
-    const text=await file.text();
-    return text.split(/\r?\n/).filter(l=>l.trim().length).map(parseCSVLine);
+    const text=await readTextSmart(file);
+    const lines=text.split(/\r?\n/).filter(l=>l.trim().length);
+    const first=lines[0]||'';
+    const cnt=ch=>first.split(ch).length-1;
+    const d = (cnt(';')>cnt(',') && cnt(';')>=cnt('\t')) ? ';' : (cnt('\t')>cnt(',') ? '\t' : ',');
+    return lines.map(l=>parseCSVLine(l,d));
   }
   throw new Error('Format non reconnu — utilisez un fichier Excel (.xlsx).');
 }
@@ -872,6 +890,63 @@ function importTypoRows(rows){
   let msg=newActifs.length+' site(s) actif(s) chargé(s).';
   if(skippedNoCoord) msg+=' '+skippedNoCoord+' site(s) ignoré(s) faute de coordonnées valides.';
   toast(msg);
+}
+
+const SITE_NAME_ALIASES=['NOM SITE','Site Name','SiteName','SITENAME','Site','SITE','Nom du site','NodeB Name','NodeBName','eNodeB Name','eNodeBName','gNodeB Name'];
+const CELL_NAME_ALIASES=['Cell Name','CellName','CELLNAME','Nom Cellule','NOM CELLULE','Cellule','Cell','Cell_Name'];
+// Typologie par site (feuille sans coordonnées) + positions/azimuts pris dans la feuille de cellules -> sites actifs avec secteurs
+function importSitesFromCells(cellRows, typoRows){
+  const g=rowsToGetter(cellRows);
+  const miss=[];
+  if(!anyColPresent(g,SITE_NAME_ALIASES)) miss.push('nom du site');
+  if(!anyColPresent(g,LAT_ALIASES)) miss.push('latitude');
+  if(!anyColPresent(g,LON_ALIASES)) miss.push('longitude');
+  if(miss.length) return { ok:false, reason:'colonnes introuvables : '+miss.join(', ') };
+  const typo={};
+  if(typoRows && typoRows.length>1){
+    const gt=rowsToGetter(typoRows);
+    if(gt.idx['nomsite']!==undefined){
+      for(let i=1;i<typoRows.length;i++){
+        const r=typoRows[i]; const k=missionKey(gt.row(r,'NOM SITE')); if(!k || typo[k]) continue;
+        typo[k]={ constructeur:gt.row(r,'CONSTRUCTEUR'), plaque:gt.row(r,'PLAQUE'), region:gt.row(r,'REGION'), departement:gt.row(r,'Departement'), commune:gt.row(r,'Commune'),
+          typo2G:gt.row(r,'Typo2G'), typo3G:gt.row(r,'Typo3G'), typo4G:gt.row(r,'Typo4G'), typo5G:gt.row(r,'Typo5G'), typo:gt.row(r,'Typo'), hba:gt.row(r,'HBA') };
+      }
+    }
+  }
+  const bySite={};
+  for(let i=1;i<cellRows.length;i++){
+    const r=cellRows[i]; const nom=g.rowAny(r,SITE_NAME_ALIASES); if(!nom) continue;
+    const k=missionKey(nom); const t=typo[k]||{};
+    let st=bySite[k];
+    if(!st){ st=bySite[k]={ id:nom, name:nom, constructeur:t.constructeur||g.rowAny(r,['Vendor','Constructeur','CONSTRUCTEUR']), plaque:t.plaque||'', region:t.region||'', departement:t.departement||'', commune:t.commune||'', statut:'Actif', sectors:[], _typo:!!typo[k] }; }
+    if(st.lat===undefined){
+      const la=toFloatSmart(g.rowAny(r,LAT_ALIASES)), lo=toFloatSmart(g.rowAny(r,LON_ALIASES));
+      if(!isNaN(la)&&!isNaN(lo)&&(la!==0||lo!==0)){ st.lat=la; st.lon=lo; }
+    }
+    const az=toFloatSmart(g.rowAny(r,AZ_ALIASES));
+    let sec=null;
+    if(!isNaN(az)) sec=st.sectors.find(x=>!x.azimuthApprox && Math.abs(((x.azimuth-az+540)%360)-180)<=10);
+    else sec=st.sectors.find(x=>x.azimuthApprox);
+    if(!sec){
+      sec={ id:'S'+(st.sectors.length+1), name:g.rowAny(r,CELL_NAME_ALIASES)||(nom+'_S'+(st.sectors.length+1)),
+        typo2G:t.typo2G||'', typo3G:t.typo3G||'', typo4G:t.typo4G||'', typo5G:t.typo5G||'', typo:t.typo||'', hba:t.hba||'' };
+      if(!isNaN(az)){ sec.azimuth=Math.round(az); sec.azimuthApprox=false; } else { sec.azimuth=0; sec.azimuthApprox=true; }
+      if(!sec.typo) sec.typo=TECH_ORDER.filter(x=>isPresent(sec['typo'+x])).join('&');
+      st.sectors.push(sec);
+    }
+  }
+  const all=Object.values(bySite);
+  all.forEach(st=>{
+    if(st.sectors.length && st.sectors.every(x=>x.azimuthApprox)){ const n=st.sectors.length; st.sectors.forEach((x,i)=>{ x.azimuth=Math.round((360/n)*i); }); }
+    st.sectors.sort((a,b)=>a.azimuth-b.azimuth); st.sectors.forEach((x,i)=>x.id='S'+(i+1));
+  });
+  const good=all.filter(st=>st.lat!==undefined);
+  if(!good.length) return { ok:false, reason:'aucun site avec coordonnées valides' };
+  const noTypo=good.filter(st=>!st._typo).length;
+  good.forEach(st=>delete st._typo);
+  NETSITES = NETSITES.filter(x=>x.statut!=='Actif').concat(good);
+  persistSites(); renderSitesAll();
+  return { ok:true, n:good.length, noTypo, skipped:all.length-good.length };
 }
 
 function importSitesAVenirRows(rows){
@@ -1413,7 +1488,7 @@ document.getElementById('fileInputMission').addEventListener('change', async e=>
   const f=e.target.files[0]; e.target.value=''; if(!f) return;
   try{
     let names;
-    if(/\.txt$/i.test(f.name)) names = parseMissionNames(await f.text());
+    if(/\.txt$/i.test(f.name)) names = parseMissionNames(await readTextSmart(f));
     else {
       const rows = await readRowsFromFile(f);
       if(!rows.length) throw new Error('Fichier vide');
@@ -1423,7 +1498,12 @@ document.getElementById('fileInputMission').addEventListener('change', async e=>
       names = parseMissionNames(rows.slice(hasHeader?1:0).map(r=>r[col]).join('\n'));
     }
     await applyMissionNames(names, false);
-  }catch(err){ toast('Import impossible : '+err.message); }
+  }catch(err){
+    toast('Import impossible : '+err.message);
+    const rep=document.getElementById('missionReport'); rep.style.color='#b3261e'; rep.textContent='✖ '+err.message;
+    return;
+  }
+  document.getElementById('missionReport').style.color='';
 });
 document.getElementById('btnMissionZone').addEventListener('click', async ()=>{
   const v=document.getElementById('missionZoneSelect').value; if(!v) return;
@@ -2365,34 +2445,45 @@ async function handleMappingRanFile(file){
 
     const TYPO_COLS=[['NOM SITE']];
     const CELL_COLS=[ENODEB_ALIASES,PCI_ALIASES,EARFCN_ALIASES];
-    const shTypo = findSheet(wb, n=>n.includes('typologie')) || wb.sheets.find(sh=>hdrHasAll(heads[sh.name],TYPO_COLS));
+    const typoCands = wb.sheets.filter(sh=>normSheetName(sh.name).includes('typologie'));
+    const shTypo = typoCands.find(sh=>normSheetName(sh.name).includes('secteur')) || typoCands[0] || wb.sheets.find(sh=>hdrHasAll(heads[sh.name],TYPO_COLS));
     const sh4G   = findSheet(wb, n=>/^active4gcells?$/.test(n)) || findSheet(wb, n=>n.includes('4g') && n.includes('cell'))
                  || wb.sheets.find(sh=>!/2g|3g|5g/i.test(sh.name) && hdrHasAll(heads[sh.name],CELL_COLS));
-    if(!shTypo && !sh4G) throw new Error('Feuilles « Typologie Secteur » et « active_4G_cells » introuvables. Feuilles du fichier : '+wb.sheets.map(s=>s.name).join(', '));
+    if(!shTypo && !sh4G) throw new Error('Feuilles « Typologie » et « active_4G_cells » introuvables. Feuilles du fichier : '+wb.sheets.map(s=>s.name).join(', '));
 
     const out=[]; const problems=[];
+    let rows4G=null;
+    if(sh4G){
+      const h=heads[sh4G.name]||[];
+      if(!hdrHasAll(h,CELL_COLS)) problems.push('« '+sh4G.name+' » : colonnes eNodeB / PCI / EARFCN introuvables (colonnes : '+h.slice(0,14).join(', ')+')');
+      else{
+        setStatus('Lecture de « '+sh4G.name+' »…');
+        rows4G=await wb.rows(sh4G.name,{onProgress:n=>setStatus('Lecture de « '+sh4G.name+' » : '+n.toLocaleString('fr-FR')+' lignes…')});
+        importCellTable(rows4G);
+        out.push(CELL_TABLE.length.toLocaleString('fr-FR')+' cellule(s) 4G');
+      }
+    } else problems.push('feuille active_4G_cells absente');
     if(shTypo){
       const h=heads[shTypo.name]||[];
       if(!hdrHasAll(h,TYPO_COLS)) problems.push('« '+shTypo.name+' » : colonne NOM SITE introuvable (colonnes : '+h.slice(0,12).join(', ')+')');
-      else if(!hdrHasAll(h,[LAT_ALIASES,LON_ALIASES])) problems.push('« '+shTypo.name+' » : pas de colonnes latitude/longitude (colonnes : '+h.slice(0,12).join(', ')+')');
       else{
         setStatus('Lecture de « '+shTypo.name+' »…');
         const rows=await wb.rows(shTypo.name,{onProgress:n=>setStatus('Lecture de « '+shTypo.name+' » : '+n.toLocaleString('fr-FR')+' lignes…')});
-        importTypoRows(rows);
-        const nAct=NETSITES.filter(x=>x.statut==='Actif').length;
-        out.push(nAct ? nAct+' site(s) actif(s)' : 'aucun site actif importé');
+        if(hdrHasAll(h,[LAT_ALIASES,LON_ALIASES])){
+          importTypoRows(rows);
+          const nAct=NETSITES.filter(x=>x.statut==='Actif').length;
+          out.push(nAct ? nAct+' site(s) actif(s)' : 'aucun site actif importé');
+        } else if(rows4G){
+          setStatus('Construction des sites à partir des cellules…');
+          await new Promise(r=>setTimeout(r,30));
+          const res=importSitesFromCells(rows4G, rows);
+          if(res.ok){
+            out.push(res.n.toLocaleString('fr-FR')+' site(s) actif(s) (positions prises dans « '+sh4G.name+' »)');
+            if(res.noTypo) problems.push(res.noTypo+' site(s) sans ligne dans « '+shTypo.name+' » (typologie vide)');
+          } else problems.push('Sites : '+res.reason+' dans « '+sh4G.name+' » (colonnes : '+(heads[sh4G.name]||[]).slice(0,24).join(', ')+')');
+        } else problems.push('« '+shTypo.name+' » n\'a pas de coordonnées et la feuille de cellules n\'a pas pu être lue pour les retrouver');
       }
-    } else problems.push('feuille Typologie Secteur absente');
-    if(sh4G){
-      const h=heads[sh4G.name]||[];
-      if(!hdrHasAll(h,CELL_COLS)) problems.push('« '+sh4G.name+' » : colonnes eNodeB / PCI / EARFCN introuvables (colonnes : '+h.slice(0,12).join(', ')+')');
-      else{
-        setStatus('Lecture de « '+sh4G.name+' »…');
-        const rows=await wb.rows(sh4G.name,{onProgress:n=>setStatus('Lecture de « '+sh4G.name+' » : '+n.toLocaleString('fr-FR')+' lignes…')});
-        importCellTable(rows);
-        out.push(CELL_TABLE.length+' cellule(s) 4G');
-      }
-    } else problems.push('feuille active_4G_cells absente');
+    } else problems.push('feuille Typologie absente');
     updateMissionUI();
     if(problems.length){
       setStatus((out.length?'✔ '+out.join(' · ')+'\n':'')+'⚠ '+problems.join('\n⚠ '), !out.length);
