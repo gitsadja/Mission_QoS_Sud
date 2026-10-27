@@ -242,7 +242,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.10.27</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.10.29</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -309,8 +309,9 @@ textarea#pointNotes{
       <h3 style="font-family:var(--font-head);font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-mute);margin:0 0 8px;">🗂 Données réseau</h3>
       <div id="netDataStatus" style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">Aucune donnée chargée.</div>
       <button class="btn primary" id="btnImportMappingRan" style="width:100%;margin-bottom:6px;">📥 Importer le Mapping RAN (1 fichier)</button>
-      <input type="file" id="fileInputMappingRan" accept=".xlsx" style="display:none;">
+      <input type="file" id="fileInputMappingRan" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none;">
       <div id="mappingRanStatus" style="font-size:11px;color:var(--text-mute);margin-bottom:8px;line-height:1.5;">Lit <code>Mapping_RAN_&lt;Mois&gt;_&lt;Année&gt;.xlsx</code> : feuilles <b>Typologie Secteur</b> (sites actifs) et <b>active_4G_cells</b> (cellules).</div>
+      <details id="mappingDiag" style="display:none;margin-bottom:8px;"></details>
       <button class="btn" id="btnImportAVenirMobile" style="width:100%;padding:9px 8px;font-size:11.5px;">📥 Sites à venir / étude (Excel)</button>
       <details style="margin-top:8px;">
         <summary style="font-size:11px;color:var(--text-mute);cursor:pointer;">Imports séparés (avancé)</summary>
@@ -618,15 +619,104 @@ function xlsxParseSheetRows(xmlText,sharedStrings){
   });
   return rows;
 }
-async function openXlsxWorkbook(arrayBuffer){
-  const bytes=new Uint8Array(arrayBuffer), dv=new DataView(arrayBuffer);
-  const entries=xlsxParseCentralDirectory(bytes,dv);
+function xlsxUnescape(t){
+  if(t.indexOf('&')<0) return t;
+  return t.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g,(m,e)=>{
+    switch(e){ case 'amp':return '&'; case 'lt':return '<'; case 'gt':return '>'; case 'quot':return '"'; case 'apos':return "'"; }
+    const n = (e[1]==='x'||e[1]==='X') ? parseInt(e.slice(2),16) : parseInt(e.slice(1),10);
+    try{ return String.fromCodePoint(n); }catch(_){ return ''; }
+  });
+}
+function xlsxTextOf(inner){
+  const clean=inner.replace(/<rPh\b[\s\S]*?<\/rPh>/g,'');
+  let out=''; const re=/<t\b[^>]*?(?:\/>|>([\s\S]*?)<\/t>)/g; let m;
+  while((m=re.exec(clean))) out += m[1] ? xlsxUnescape(m[1]) : '';
+  return out;
+}
+// Décompresse un Blob "deflate-raw" en flux et passe le texte par morceaux à onChunk (peut être async ; renvoyer true pour arrêter).
+async function xlsxStreamBlob(blob, method, onChunk){
+  if(method===0){ await onChunk(new TextDecoder('utf-8').decode(await blob.arrayBuffer())); return; }
+  if(method!==8) throw new Error('Méthode de compression ZIP non supportée dans ce fichier.');
+  if(typeof DecompressionStream==='undefined') throw new Error("Ce navigateur ne supporte pas la décompression native (DecompressionStream). Utilise une version récente de Chrome, Edge ou Safari.");
+  const reader=blob.stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
   const dec=new TextDecoder('utf-8');
-  const sheets=[]; // {name, path}
+  for(;;){
+    const r=await reader.read();
+    if(r.done){ const tail=dec.decode(); if(tail) await onChunk(tail); break; }
+    if((await onChunk(dec.decode(r.value,{stream:true})))===true){ try{ await reader.cancel(); }catch(_){} break; }
+  }
+}
+function xlsxParseRowInner(inner, ss){
+  const arr=[]; let max=-1;
+  const cellRe=/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g; let m;
+  while((m=cellRe.exec(inner))){
+    const attrs=m[1], body=m[2]||'';
+    const rm=/\br="([A-Z]+)\d*"/.exec(attrs);
+    const ci = rm ? xlsxColToIndex(rm[1]) : arr.length;
+    const tm=/\bt="([^"]*)"/.exec(attrs); const t = tm ? tm[1] : '';
+    let val='';
+    if(t==='inlineStr'){ val = xlsxTextOf(body); }
+    else{
+      const vm=/<v\b[^>]*>([\s\S]*?)<\/v>/.exec(body);
+      const raw = vm ? xlsxUnescape(vm[1]) : '';
+      if(t==='s') val = ss[parseInt(raw,10)] || '';
+      else if(t==='b') val = raw==='1' ? 'TRUE' : 'FALSE';
+      else val = raw;
+    }
+    arr[ci]=val; if(ci>max) max=ci;
+  }
+  for(let i=0;i<=max;i++){ if(arr[i]===undefined) arr[i]=''; }
+  return arr;
+}
+// Ouvre un .xlsx SANS le charger en mémoire : seuls le répertoire central et les feuilles demandées sont lus, en flux.
+async function openXlsxFile(file){
+  const size=file.size;
+  if(size<22) throw new Error('Fichier vide ou invalide.');
+  // la fin du répertoire central est cherchée dans les derniers Mo (certains outils ajoutent des données après le ZIP)
+  const tailLen=Math.min(size,8*1048576);
+  const tail=new Uint8Array(await file.slice(size-tailLen,size).arrayBuffer()); const tdv=new DataView(tail.buffer);
+  let eocd=-1; for(let i=tail.length-22;i>=0;i--){ if(tdv.getUint32(i,true)===0x06054b50){ eocd=i; break; } }
+  if(eocd<0){
+    const head=new Uint8Array(await file.slice(0,8).arrayBuffer());
+    const hex=Array.from(head).map(x=>x.toString(16).padStart(2,'0')).join('');
+    if(hex.startsWith('d0cf11e0a1b11ae1')) throw new Error("Ce fichier est protégé (mot de passe ou étiquette de confidentialité Office) ou c'est un ancien format .xls : l'appli ne peut pas le lire. Ouvre-le dans Excel et enregistre une copie .xlsx non protégée.");
+    if(head[0]===0x50 && head[1]===0x4b) throw new Error("Le fichier est incomplet (copie tronquée : "+(size>=1048576?(size/1048576).toFixed(1)+" Mo":Math.round(size/1024)+" Ko")+" reçus). Si le fichier est sur OneDrive, télécharge-le d'abord sur le téléphone (« Toujours conserver sur cet appareil »), puis réessaie.");
+    const txt=new TextDecoder('utf-8').decode(head);
+    if(/^[\x20-\x7e\xef\xbb\xbf]{4}/.test(txt)) throw new Error("Ce fichier est du texte (CSV ?) et pas un vrai .xlsx. Renomme-le en .csv ou réenregistre-le en .xlsx depuis Excel.");
+    throw new Error("Ce n'est pas un fichier .xlsx valide (début du fichier : "+hex+", taille "+(size/1048576).toFixed(1)+" Mo). Réenregistre-le en .xlsx depuis Excel.");
+  }
+  const cdCount=tdv.getUint16(eocd+10,true), cdSize=tdv.getUint32(eocd+12,true), cdOffsetRaw=tdv.getUint32(eocd+16,true);
+  if(cdOffsetRaw===0xFFFFFFFF) throw new Error('Fichier ZIP64 non supporté.');
+  const eocdAbs=size-tailLen+eocd;
+  const shift=Math.max(0, eocdAbs-cdSize-cdOffsetRaw); // données ajoutées AVANT le ZIP (rare)
+  const cdOffset=cdOffsetRaw+shift;
+  const cd=new Uint8Array(await file.slice(cdOffset,cdOffset+cdSize).arrayBuffer()); const dv=new DataView(cd.buffer);
+  const entries={}; let p=0;
+  for(let i=0;i<cdCount;i++){
+    if(dv.getUint32(p,true)!==0x02014b50) throw new Error('Entrée ZIP centrale invalide — fichier corrompu.');
+    const method=dv.getUint16(p+10,true), compSize=dv.getUint32(p+20,true);
+    const nameLen=dv.getUint16(p+28,true), extraLen=dv.getUint16(p+30,true), commentLen=dv.getUint16(p+32,true);
+    const localOffset=dv.getUint32(p+42,true)+shift;
+    entries[new TextDecoder('utf-8').decode(cd.subarray(p+46,p+46+nameLen))]={method,compSize,localOffset};
+    p+=46+nameLen+extraLen+commentLen;
+  }
+  async function entryBlob(name){
+    const e=entries[name]; if(!e) throw new Error('Partie du classeur introuvable : '+name);
+    const h=new DataView(await file.slice(e.localOffset,e.localOffset+30).arrayBuffer());
+    if(h.getUint32(0,true)!==0x04034b50) throw new Error('En-tête local ZIP invalide — fichier corrompu.');
+    const ds=e.localOffset+30+h.getUint16(26,true)+h.getUint16(28,true);
+    return { blob:file.slice(ds,ds+e.compSize), method:e.method };
+  }
+  async function readText(name){
+    const {blob,method}=await entryBlob(name); let out='';
+    await xlsxStreamBlob(blob,method,t=>{ out+=t; });
+    return out;
+  }
+  const sheets=[];
   if(entries['xl/workbook.xml'] && entries['xl/_rels/workbook.xml.rels']){
     try{
-      const wbDoc=new DOMParser().parseFromString(dec.decode(await xlsxExtractEntry(bytes,dv,entries['xl/workbook.xml'])),'application/xml');
-      const relsDoc=new DOMParser().parseFromString(dec.decode(await xlsxExtractEntry(bytes,dv,entries['xl/_rels/workbook.xml.rels'])),'application/xml');
+      const wbDoc=new DOMParser().parseFromString(await readText('xl/workbook.xml'),'application/xml');
+      const relsDoc=new DOMParser().parseFromString(await readText('xl/_rels/workbook.xml.rels'),'application/xml');
       const rels={}; Array.from(relsDoc.getElementsByTagName('Relationship')).forEach(r=>rels[r.getAttribute('Id')]=r.getAttribute('Target'));
       Array.from(wbDoc.getElementsByTagName('sheet')).forEach(sh=>{
         const rId=sh.getAttribute('r:id')||sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');
@@ -640,25 +730,46 @@ async function openXlsxWorkbook(arrayBuffer){
   if(!sheets.length) throw new Error('Aucune feuille de calcul trouvée dans ce classeur.');
   let sharedStrings=null;
   async function getShared(){
-    if(sharedStrings===null){
-      sharedStrings = entries['xl/sharedStrings.xml']
-        ? xlsxParseSharedStrings(dec.decode(await xlsxExtractEntry(bytes,dv,entries['xl/sharedStrings.xml'])))
-        : [];
+    if(sharedStrings!==null) return sharedStrings;
+    const ss=[];
+    if(entries['xl/sharedStrings.xml']){
+      const {blob,method}=await entryBlob('xl/sharedStrings.xml');
+      let buf=''; const siRe=/<si\b[^>]*?(?:\/>|>([\s\S]*?)<\/si>)/g;
+      await xlsxStreamBlob(blob,method,t=>{
+        buf+=t; siRe.lastIndex=0; let m,last=0;
+        while((m=siRe.exec(buf))){ last=siRe.lastIndex; ss.push(m[1] ? xlsxTextOf(m[1]) : ''); }
+        buf=buf.slice(last);
+      });
     }
-    return sharedStrings;
+    sharedStrings=ss; return ss;
   }
   return {
     sheets,
-    async rows(sheet){
+    // opts: {maxRows, onProgress(n)}
+    async rows(sheet, opts){
+      opts=opts||{};
       const sh = typeof sheet==='number' ? sheets[sheet] : sheets.find(x=>x.name===sheet);
       if(!sh) throw new Error('Feuille introuvable : '+sheet);
       const ss=await getShared();
-      return xlsxParseSheetRows(dec.decode(await xlsxExtractEntry(bytes,dv,entries[sh.path])),ss);
+      const {blob,method}=await entryBlob(sh.path);
+      const rows=[]; let buf='', lastProg=0;
+      const rowRe=/<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g;
+      await xlsxStreamBlob(blob,method,async t=>{
+        buf+=t; rowRe.lastIndex=0; let m,last=0;
+        while((m=rowRe.exec(buf))){
+          last=rowRe.lastIndex;
+          rows.push(m[1]!==undefined ? xlsxParseRowInner(m[1],ss) : []);
+          if(opts.maxRows && rows.length>=opts.maxRows) return true;
+        }
+        buf=buf.slice(last);
+        if(opts.onProgress && rows.length-lastProg>=4000){ lastProg=rows.length; opts.onProgress(rows.length); await new Promise(r=>setTimeout(r,0)); }
+      });
+      return rows;
     }
   };
 }
-async function readXlsxRows(arrayBuffer){
-  const wb=await openXlsxWorkbook(arrayBuffer);
+async function readXlsxRows(file){
+  const wb=await openXlsxFile(file);
   return await wb.rows(0);
 }
 function parseCSVLine(line){
@@ -673,7 +784,8 @@ function parseCSVLine(line){
 function normKey(h){ return (h||'').trim().toLowerCase().replace(/\s+/g,''); }
 async function readRowsFromFile(file){
   const name=(file.name||'').toLowerCase();
-  if(name.endsWith('.xlsx')){ return await readXlsxRows(await file.arrayBuffer()); }
+  if(name.endsWith('.xlsx')||name.endsWith('.xlsm')){ return await readXlsxRows(file); }
+  if(name.endsWith('.xlsb')||name.endsWith('.xls')) throw new Error('Format .xls/.xlsb non lisible : enregistre le fichier en .xlsx depuis Excel.');
   if(name.endsWith('.csv')){
     const text=await file.text();
     return text.split(/\r?\n/).filter(l=>l.trim().length).map(parseCSVLine);
@@ -2153,7 +2265,8 @@ document.getElementById('btnConfirmImport').addEventListener('click', async ()=>
 /* =========================================================
    10A. IDENTIFICATION DE CELLULE — eNodeB + PCI + EARFCN -> nom de cellule
    ========================================================= */
-let CELL_TABLE = []; // {raw:{...toutes les colonnes...}, enodeb, pci, earfcn}
+let CELL_TABLE = []; // {row:[...colonnes...], enodeb, pci, earfcn} ; CELL_TABLE.headers = en-têtes
+function cellRaw(c){ const o={}; (CELL_TABLE.headers||[]).forEach((h,i)=>{ o[h]=(c.row[i]!==undefined && c.row[i]!==null)?String(c.row[i]).trim():''; }); return o; }
 const ENODEB_ALIASES=['eNodeB','eNodeBId','ENODEB','ENB','ENBID','ENODEBID','eNB ID','ENODEB ID','GNBID','GNODEB'];
 const PCI_ALIASES=['PCI','Pci','Physical Cell ID','Physical cell ID','PhysicalCellId'];
 const EARFCN_ALIASES=['EARFCN','Earfcn','DLEARFCN','DL EARFCN','ARFCN'];
@@ -2174,15 +2287,15 @@ function normId(s){
 function buildCellTableFromRows(rows){
   const g=rowsToGetter(rows);
   if(!anyColPresent(g,ENODEB_ALIASES) || !anyColPresent(g,PCI_ALIASES) || !anyColPresent(g,EARFCN_ALIASES)) return null;
-  const headers = rows[0];
+  const headers = rows[0].map(h=>String(h===undefined||h===null?'':h).trim());
   const table = [];
+  table.headers = headers;
   for(let i=1;i<rows.length;i++){
     const r = rows[i];
     if(!r || !r.length) continue;
-    const raw = {};
-    headers.forEach((h,ci)=>{ raw[h] = r[ci]!==undefined ? String(r[ci]).trim() : ''; });
+    // on garde la ligne telle quelle (tableau) : beaucoup moins de mémoire qu'un objet par cellule — l'objet est recréé à l'affichage
     table.push({
-      raw,
+      row: r,
       enodeb: normId(g.rowAny(r, ENODEB_ALIASES)),
       pci: normId(g.rowAny(r, PCI_ALIASES)),
       earfcn: normId(g.rowAny(r, EARFCN_ALIASES))
@@ -2230,39 +2343,70 @@ async function handleCellTableFile(file){
 /* ---- Mapping RAN : un seul classeur multi-feuilles -> sites actifs + table de cellules ---- */
 function normSheetName(n){ return String(n||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
 function findSheet(wb, test){ return wb.sheets.find(sh=>test(normSheetName(sh.name))); }
+function escHtml(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function hdrHasAll(h, groups){ const set=new Set((h||[]).map(normKey)); return groups.every(g=>g.some(a=>set.has(normKey(a)))); }
 async function handleMappingRanFile(file){
-  const status=document.getElementById('mappingRanStatus');
+  const status=document.getElementById('mappingRanStatus'), diag=document.getElementById('mappingDiag');
+  const setStatus=(t,err)=>{ status.textContent=t; status.style.color = err ? '#b3261e' : 'var(--text-mute)'; };
+  diag.style.display='none'; diag.innerHTML='';
+  let heads={};
   try{
-    if(!/\.xlsx$/i.test(file.name||'')) throw new Error('Choisis le fichier Mapping RAN au format .xlsx.');
-    status.textContent='Lecture du classeur…';
-    const wb=await openXlsxWorkbook(await file.arrayBuffer());
-    const shTypo = findSheet(wb, n=>n.includes('typologie')) ;
-    const sh4G   = findSheet(wb, n=>/^active4gcells?$/.test(n)) || findSheet(wb, n=>n.includes('4g') && n.includes('cell'));
-    if(!shTypo && !sh4G){
-      throw new Error('Feuilles "Typologie Secteur" / "active_4G_cells" introuvables. Feuilles du fichier : '+wb.sheets.map(s=>s.name).join(', '));
+    const lower=(file.name||'').toLowerCase();
+    if(/\.xlsb$|\.xls$/.test(lower)) throw new Error("Format .xls/.xlsb non lisible par l'appli : ouvre le fichier dans Excel et enregistre-le en .xlsx.");
+    if(!/\.xls[xm]$/.test(lower)) throw new Error('Choisis le fichier Mapping RAN au format .xlsx.');
+    setStatus('Ouverture du classeur ('+(file.size/1048576).toFixed(1)+' Mo)…');
+    const wb=await openXlsxFile(file);
+    for(const sh of wb.sheets.slice(0,40)){
+      try{ const r=await wb.rows(sh.name,{maxRows:1}); heads[sh.name]=(r[0]||[]).map(x=>String(x).trim()); }catch(e){ heads[sh.name]=[]; }
     }
-    const out=[];
+    diag.innerHTML='<summary style="font-size:11px;color:var(--text-mute);cursor:pointer;">Feuilles du fichier ('+wb.sheets.length+') et leurs colonnes</summary>'
+      + wb.sheets.map(sh=>'<div style="font-size:10.5px;font-family:var(--font-mono);margin-top:6px;line-height:1.45;word-break:break-word;"><b>'+escHtml(sh.name)+'</b> ('+(heads[sh.name]||[]).length+' col.)<br>'+escHtml((heads[sh.name]||[]).slice(0,16).join(' | '))+((heads[sh.name]||[]).length>16?' …':'')+'</div>').join('');
+    diag.style.display='block';
+
+    const TYPO_COLS=[['NOM SITE']];
+    const CELL_COLS=[ENODEB_ALIASES,PCI_ALIASES,EARFCN_ALIASES];
+    const shTypo = findSheet(wb, n=>n.includes('typologie')) || wb.sheets.find(sh=>hdrHasAll(heads[sh.name],TYPO_COLS));
+    const sh4G   = findSheet(wb, n=>/^active4gcells?$/.test(n)) || findSheet(wb, n=>n.includes('4g') && n.includes('cell'))
+                 || wb.sheets.find(sh=>!/2g|3g|5g/i.test(sh.name) && hdrHasAll(heads[sh.name],CELL_COLS));
+    if(!shTypo && !sh4G) throw new Error('Feuilles « Typologie Secteur » et « active_4G_cells » introuvables. Feuilles du fichier : '+wb.sheets.map(s=>s.name).join(', '));
+
+    const out=[]; const problems=[];
     if(shTypo){
-      status.textContent='Lecture de « '+shTypo.name+' »…';
-      await new Promise(r=>setTimeout(r,30));
-      const rows=await wb.rows(shTypo.name);
-      importTypoRows(rows);
-      const nAct=NETSITES.filter(s=>s.statut==='Actif').length;
-      out.push(nAct ? nAct+' site(s) actif(s)' : 'sites actifs : rien d\'importé (voir message)');
-    } else out.push('feuille Typologie absente');
+      const h=heads[shTypo.name]||[];
+      if(!hdrHasAll(h,TYPO_COLS)) problems.push('« '+shTypo.name+' » : colonne NOM SITE introuvable (colonnes : '+h.slice(0,12).join(', ')+')');
+      else if(!hdrHasAll(h,[LAT_ALIASES,LON_ALIASES])) problems.push('« '+shTypo.name+' » : pas de colonnes latitude/longitude (colonnes : '+h.slice(0,12).join(', ')+')');
+      else{
+        setStatus('Lecture de « '+shTypo.name+' »…');
+        const rows=await wb.rows(shTypo.name,{onProgress:n=>setStatus('Lecture de « '+shTypo.name+' » : '+n.toLocaleString('fr-FR')+' lignes…')});
+        importTypoRows(rows);
+        const nAct=NETSITES.filter(x=>x.statut==='Actif').length;
+        out.push(nAct ? nAct+' site(s) actif(s)' : 'aucun site actif importé');
+      }
+    } else problems.push('feuille Typologie Secteur absente');
     if(sh4G){
-      status.textContent='Lecture de « '+sh4G.name+' »…';
-      await new Promise(r=>setTimeout(r,30));
-      const rows=await wb.rows(sh4G.name);
-      importCellTable(rows);
-      out.push(CELL_TABLE.length ? CELL_TABLE.length+' cellule(s) 4G' : 'cellules 4G : colonnes eNodeB/PCI/EARFCN introuvables');
-    } else out.push('feuille active_4G_cells absente');
+      const h=heads[sh4G.name]||[];
+      if(!hdrHasAll(h,CELL_COLS)) problems.push('« '+sh4G.name+' » : colonnes eNodeB / PCI / EARFCN introuvables (colonnes : '+h.slice(0,12).join(', ')+')');
+      else{
+        setStatus('Lecture de « '+sh4G.name+' »…');
+        const rows=await wb.rows(sh4G.name,{onProgress:n=>setStatus('Lecture de « '+sh4G.name+' » : '+n.toLocaleString('fr-FR')+' lignes…')});
+        importCellTable(rows);
+        out.push(CELL_TABLE.length+' cellule(s) 4G');
+      }
+    } else problems.push('feuille active_4G_cells absente');
     updateMissionUI();
-    status.textContent='✔ '+file.name+' — '+out.join(' · ');
-    toast('Mapping RAN : '+out.join(' · '));
+    if(problems.length){
+      setStatus((out.length?'✔ '+out.join(' · ')+'\n':'')+'⚠ '+problems.join('\n⚠ '), !out.length);
+      status.style.whiteSpace='pre-line';
+      toast(out.length ? 'Mapping RAN : import partiel (voir détail)' : 'Mapping RAN : rien importé (voir détail)');
+    } else {
+      status.style.whiteSpace='normal';
+      setStatus('✔ '+file.name+' — '+out.join(' · '));
+      toast('Mapping RAN : '+out.join(' · '));
+    }
   }catch(e){
-    status.textContent='';
-    toast('Import impossible : '+e.message);
+    status.style.whiteSpace='pre-line';
+    setStatus('✖ '+(e && e.message ? e.message : String(e)), true);
+    toast('Import impossible — voir le détail dans le panneau Données réseau');
   }
 }
 document.getElementById('btnImportMappingRan').addEventListener('click', ()=>document.getElementById('fileInputMappingRan').click());
@@ -2278,7 +2422,7 @@ function renderCellSearchResults(matches, fallback){
     ? `<div style="font-size:11px;color:#a9720a;background:#fff6e0;border-radius:8px;padding:6px 10px;margin-bottom:8px;">⚠ Pas de correspondance exacte PCI/EARFCN — cellules de cet eNodeB affichées à la place.</div>`
     : '';
   html += shown.map(m=>{
-    const rowsHtml = Object.entries(m.raw).filter(([k,v])=>v!=='').map(([k,v])=>
+    const rowsHtml = Object.entries(cellRaw(m)).filter(([k,v])=>v!=='').map(([k,v])=>
       `<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px dashed var(--border);font-size:11.5px;">
         <span style="color:var(--text-mute);flex:none;">${k}</span>
         <span style="font-family:var(--font-mono);font-weight:600;text-align:right;">${v}</span>
