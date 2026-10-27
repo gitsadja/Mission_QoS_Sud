@@ -265,7 +265,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.11.03</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.11.04</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -463,6 +463,22 @@ textarea#pointNotes{
     </div>
     <div class="editor-body">
       <div class="editor-meta" id="editorMeta"></div>
+      <button id="btnEditPos" style="width:100%;border:1px dashed var(--border);background:var(--bg-soft);color:var(--text);border-radius:10px;padding:9px;font-size:12.5px;font-weight:700;margin:-4px 0 10px;">✎ Modifier la position</button>
+      <div id="posEditBox" style="display:none;border:1px solid var(--border);border-radius:10px;padding:10px;margin:-4px 0 12px;background:var(--bg-soft);">
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <input type="text" id="posLat" placeholder="Latitude" inputmode="text" autocomplete="off" style="flex:1;min-width:0;padding:9px 8px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font-mono);background:#fff;color:var(--text);">
+          <input type="text" id="posLon" placeholder="Longitude" inputmode="text" autocomplete="off" style="flex:1;min-width:0;padding:9px 8px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font-mono);background:#fff;color:var(--text);">
+        </div>
+        <div style="font-size:10.5px;color:var(--text-mute);margin-bottom:8px;line-height:1.45;">Tu peux coller « lat, lon » dans le premier champ. Virgule ou point acceptés.</div>
+        <div style="display:flex;gap:6px;margin-bottom:6px;">
+          <button class="btn primary" id="btnPosApply" style="padding:9px 8px;font-size:12px;">✓ Appliquer</button>
+          <button class="btn" id="btnPosMap" style="padding:9px 8px;font-size:12px;">🗺 Sur la carte</button>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn" id="btnPosGps" style="padding:9px 8px;font-size:12px;">📍 Ma position GPS</button>
+          <button class="btn" id="btnPosRestore" style="padding:9px 8px;font-size:12px;display:none;">↩ Position d'origine</button>
+        </div>
+      </div>
       <label class="field-label">Notes</label>
       <textarea id="pointNotes" placeholder="Observations sur ce point…"></textarea>
       <div class="media-btn-row">
@@ -1755,6 +1771,13 @@ function endPointer(e){
       return;
     }
     const realTarget = document.elementFromPoint(e.clientX, e.clientY);
+    if(relocatePointId){
+      const st = realTarget && realTarget.closest('[data-site]');
+      const site = st ? NETSITES.find(x=>x.id===st.dataset.site) : null;
+      if(site) showPointConfirm(site.lat, site.lon);
+      else { const [lat,lon]=unproject(px,py,rect.width,rect.height); showPointConfirm(lat,lon); }
+      return;
+    }
     const tp = realTarget && realTarget.closest('[data-point]');
     const ts = realTarget && realTarget.closest('[data-site]');
     const tsp = realTarget && realTarget.closest('[data-searchpin]');
@@ -1777,7 +1800,83 @@ function endPointer(e){
 svg.addEventListener('pointerup', endPointer);
 svg.addEventListener('pointercancel', endPointer);
 
+/* ---- déplacer un point existant : saisie lat/lon, position GPS, ou toucher la carte ---- */
+let relocatePointId=null;
+function setConfirmBar(text, canConfirm){
+  document.querySelector('#pointConfirmBar span').textContent=text;
+  document.getElementById('btnConfirmPoint').style.display = canConfirm ? '' : 'none';
+}
+function parsePairStrict(t){
+  t=String(t||'').trim();
+  const m = t.match(/^(-?\d+(?:[.,]\d+)?)\s*;\s*(-?\d+(?:[.,]\d+)?)$/) || t.match(/^(-?\d+(?:\.\d+)?)\s*,\s+(-?\d+(?:\.\d+)?)$/) || t.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/) || t.match(/^(-?\d+(?:[.,]\d+)?)\s+(-?\d+(?:[.,]\d+)?)$/);
+  return m ? [parseFloat(m[1].replace(',','.')), parseFloat(m[2].replace(',','.'))] : null;
+}
+function validLatLon(lat,lon){ return !isNaN(lat)&&!isNaN(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180; }
+function movePoint(id, lat, lon, accuracy){
+  const p=points.find(x=>x.id===id); if(!p) return false;
+  if(!validLatLon(lat,lon)){ toast('Coordonnées invalides'); return false; }
+  if(!p.posOrig) p.posOrig={ lat:p.lat, lon:p.lon, accuracy:p.accuracy||null };
+  p.lat=lat; p.lon=lon; p.accuracy=accuracy||null;
+  persistPoint(p);
+  center={lat,lon}; followMode=false; document.getElementById('btnFollow').classList.remove('on');
+  renderAll();
+  return true;
+}
+function refreshPosEditor(p){
+  document.getElementById('editorMeta').innerHTML=editorMetaHtml(p);
+  document.getElementById('posLat').value=p.lat.toFixed(6); document.getElementById('posLon').value=p.lon.toFixed(6);
+  document.getElementById('btnPosRestore').style.display = p.posOrig ? '' : 'none';
+}
+function startRelocate(id){
+  const p=points.find(x=>x.id===id); if(!p) return;
+  closeEditor();                    // enregistre nom / notes
+  relocatePointId=id; pendingPoint=null;
+  center={lat:p.lat,lon:p.lon}; followMode=false; document.getElementById('btnFollow').classList.remove('on');
+  setConfirmBar('Touche la carte pour placer « '+p.name+' » (touche un site pour t\'y caler)', false);
+  document.getElementById('pointConfirmBar').classList.add('show');
+  renderMap();
+}
+function endRelocate(reopen){
+  const id=relocatePointId; relocatePointId=null; pendingPoint=null;
+  document.getElementById('pointConfirmBar').classList.remove('show');
+  setConfirmBar('Placer un point ici ?', true);
+  renderMap();
+  if(reopen && id) openEditor(id);
+}
+document.getElementById('btnEditPos').addEventListener('click', ()=>{
+  const p=points.find(x=>x.id===editingPointId); if(!p) return;
+  const box=document.getElementById('posEditBox');
+  const open = box.style.display==='none';
+  box.style.display = open ? 'block' : 'none';
+  if(open) refreshPosEditor(p);
+});
+document.getElementById('btnPosApply').addEventListener('click', ()=>{
+  const p=points.find(x=>x.id===editingPointId); if(!p) return;
+  let latS=document.getElementById('posLat').value, lonS=document.getElementById('posLon').value;
+  let lat, lon;
+  const pair = lonS.trim()==='' ? parsePairStrict(latS) : null;   // « lat, lon » collé dans le premier champ (seulement si la longitude est vide)
+  if(pair){ lat=pair[0]; lon=pair[1]; } else { lat=toFloatSmart(latS); lon=toFloatSmart(lonS); }
+  if(!validLatLon(lat,lon)){ toast('Coordonnées invalides (latitude −90 à 90, longitude −180 à 180)'); return; }
+  if(movePoint(p.id,lat,lon,null)){ refreshPosEditor(p); toast('Position mise à jour'); }
+});
+document.getElementById('btnPosGps').addEventListener('click', ()=>{
+  const p=points.find(x=>x.id===editingPointId); if(!p) return;
+  const g=(bestRecentPos && (Date.now()-bestRecentPos.ts)<BEST_POS_MAX_AGE_MS) ? bestRecentPos : currentPos;
+  if(!g){ toast('Position GPS non disponible pour le moment'); return; }
+  if(movePoint(p.id,g.lat,g.lon,g.accuracy)){ refreshPosEditor(p); toast('Position GPS appliquée (±'+Math.round(g.accuracy)+' m)'); }
+});
+document.getElementById('btnPosRestore').addEventListener('click', ()=>{
+  const p=points.find(x=>x.id===editingPointId); if(!p||!p.posOrig) return;
+  const o=p.posOrig; p.lat=o.lat; p.lon=o.lon; p.accuracy=o.accuracy; delete p.posOrig;
+  persistPoint(p); renderAll(); refreshPosEditor(p); toast('Position d\'origine rétablie');
+});
+document.getElementById('btnPosMap').addEventListener('click', ()=>{
+  if(editingPointId) startRelocate(editingPointId);
+});
+
 function showPointConfirm(lat,lon){
+  if(relocatePointId){ const p=points.find(x=>x.id===relocatePointId); setConfirmBar('Déplacer « '+(p?p.name:'point')+' » ici ?', true); }
+  else setConfirmBar('Placer un point ici ?', true);
   pendingPoint = {lat,lon};
   document.getElementById('pointConfirmBar').classList.add('show');
   renderMap();
@@ -1785,17 +1884,26 @@ function showPointConfirm(lat,lon){
 function cancelPointConfirm(){
   if(!pendingPoint) return;
   pendingPoint = null;
-  document.getElementById('pointConfirmBar').classList.remove('show');
+  if(relocatePointId){ const p=points.find(x=>x.id===relocatePointId); setConfirmBar('Touche la carte pour placer « '+(p?p.name:'point')+' »', false); }
+  else document.getElementById('pointConfirmBar').classList.remove('show');
   renderMap();
 }
 document.getElementById('btnConfirmPoint').addEventListener('click', ()=>{
   if(!pendingPoint) return;
   const {lat,lon} = pendingPoint;
+  if(relocatePointId){
+    const id=relocatePointId;
+    if(movePoint(id,lat,lon,null)){ endRelocate(true); toast('Point déplacé'); }
+    return;
+  }
   pendingPoint = null;
   document.getElementById('pointConfirmBar').classList.remove('show');
   addPoint(lat,lon,null,true);
 });
-document.getElementById('btnCancelPoint').addEventListener('click', cancelPointConfirm);
+document.getElementById('btnCancelPoint').addEventListener('click', ()=>{
+  if(relocatePointId){ endRelocate(true); return; }
+  cancelPointConfirm();
+});
 
 document.getElementById('btnFollow').addEventListener('click', e=>{
   followMode=!followMode;
@@ -2097,6 +2205,11 @@ const editorOverlay=document.getElementById('editorOverlay');
 const pointNameInput=document.getElementById('pointName');
 const pointNotesInput=document.getElementById('pointNotes');
 
+function editorMetaHtml(p){
+  let moved='';
+  if(p.posOrig){ const m=Math.round(haversineKm(p.posOrig.lat,p.posOrig.lon,p.lat,p.lon)*1000); moved=' <span class="warn">· position modifiée'+(m>0?' (déplacé de '+(m>=1000?(m/1000).toFixed(2)+' km':m+' m')+')':'')+'</span>'; }
+  return `${fmtTime(p.ts)}<br>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}${p.accuracy? ' · précision ±'+Math.round(p.accuracy)+' m':' <span class="warn">· position placée manuellement</span>'}${moved}`;
+}
 function openEditor(id){
   const p = points.find(x=>x.id===id); if(!p) return;
   cancelPointConfirm();
@@ -2104,8 +2217,8 @@ function openEditor(id){
   idbPut('meta',{key:'editingPointId',value:id}).catch(()=>{});
   pointNameInput.value=p.name;
   pointNotesInput.value=p.notes;
-  document.getElementById('editorMeta').innerHTML =
-    `${fmtTime(p.ts)}<br>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}${p.accuracy? ' · précision ±'+Math.round(p.accuracy)+' m':' <span class="warn">· position placée manuellement</span>'}`;
+  document.getElementById('editorMeta').innerHTML = editorMetaHtml(p);
+  document.getElementById('posEditBox').style.display='none';
   renderMediaGrid(p);
   editorOverlay.classList.add('open');
   renderMap();
