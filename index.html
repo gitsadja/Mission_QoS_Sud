@@ -265,7 +265,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.11.04</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.11.05</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -1279,7 +1279,61 @@ function tileUrl(layer,z,x,y){
 }
 const SVGNS = 'http://www.w3.org/2000/svg';
 let _tileElements = new Map(); // "tx,ty" -> élément <image> déjà présent dans le DOM
-let _lastTileParams = null;    // {baseLayer, zoom} — un changement force une reconstruction complète
+let _lastTileParams = null;    // {baseLayer, zoom, nz} — un changement force une reconstruction complète
+
+/* ---- zoom natif des tuiles + « sur-zoom » : au-delà de la couverture réelle de l'imagerie, on agrandit la dernière tuile valide
+        au lieu d'afficher « Map data not yet available » ---- */
+const TILE_NATIVE_MAX = 19, SAT_PROBE_MIN_Z = 16, ZOOM_MAX = 20;
+let satLimits = {};   // cellule ~11 km -> zoom natif maximal appris pour cette zone
+try{ satLimits = JSON.parse(localStorage.getItem('terrain_sat_limits')||'{}') || {}; }catch(e){ satLimits = {}; }
+function satCell(lat,lon){ return Math.round(lat*10)+','+Math.round(lon*10); }
+function nativeZoomFor(layer, Z){
+  if(layer==='sat'){ const lim=satLimits[satCell(center.lat,center.lon)]; return Math.min(Z, TILE_NATIVE_MAX, lim||TILE_NATIVE_MAX); }
+  return Math.min(Z, TILE_NATIVE_MAX);
+}
+const _probeCache = new Map();   // "z/x/y" -> true (pas d'image) | false (ok) | null (indéterminé)
+let _probeTimer = null;
+// Tuile « Map data not yet available » d'Esri : image quasi unie, gris clair neutre (texte gris très discret). Une vraie image satellite ne ressemble pas à ça.
+async function satTileNoData(z,x,y){
+  try{
+    const r = await fetch(tileUrl('sat',z,x,y), {mode:'cors'});
+    if(!r.ok) return (r.status===404 || r.status===400) ? true : null;
+    const blob = await r.blob();
+    const bmp = await createImageBitmap(blob);
+    const cv = document.createElement('canvas'); cv.width=32; cv.height=32;
+    const ctx = cv.getContext('2d',{willReadFrequently:true});
+    ctx.drawImage(bmp,0,0,32,32); if(bmp.close) bmp.close();
+    const d = ctx.getImageData(0,0,32,32).data;
+    let sr=0,sg=0,sb=0,sl=0,sl2=0; const N=32*32;
+    for(let i=0;i<d.length;i+=4){ const l=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; sr+=d[i]; sg+=d[i+1]; sb+=d[i+2]; sl+=l; sl2+=l*l; }
+    const mr=sr/N, mg=sg/N, mb=sb/N, ml=sl/N, sd=Math.sqrt(Math.max(0,sl2/N-ml*ml));
+    const neutral = Math.max(mr,mg,mb)-Math.min(mr,mg,mb) < 10;
+    return neutral && ml>185 && sd<28;
+  }catch(e){ return null; }
+}
+function scheduleSatProbes(nz, firstX,lastX,firstY,lastY, n, cell){
+  clearTimeout(_probeTimer);
+  if(baseLayer!=='sat' || nz<SAT_PROBE_MIN_Z) return;
+  _probeTimer = setTimeout(async ()=>{
+    const wrapX=x=>((x%n)+n)%n, clampY=y=>Math.max(0,Math.min(n-1,y));
+    const tiles=[ [(firstX+lastX)>>1,(firstY+lastY)>>1], [firstX,firstY], [lastX,lastY] ];
+    const keys=[...new Set(tiles.map(([x,y])=>nz+'/'+wrapX(x)+'/'+clampY(y)))];
+    let anyNoData=false, anyUnknown=false;
+    await Promise.all(keys.map(async k=>{
+      if(!_probeCache.has(k)){
+        const [z,x,y]=k.split('/').map(Number);
+        _probeCache.set(k, await satTileNoData(z,x,y));
+      }
+      const v=_probeCache.get(k);
+      if(v===true) anyNoData=true; else if(v===null) anyUnknown=true;
+    }));
+    if(anyNoData && baseLayer==='sat' && nz>=SAT_PROBE_MIN_Z){
+      satLimits[cell] = Math.min(satLimits[cell]||TILE_NATIVE_MAX, nz-1);
+      try{ localStorage.setItem('terrain_sat_limits', JSON.stringify(satLimits)); }catch(e){}
+      renderMap();   // re-dessine avec le zoom natif réduit (et re-teste au niveau inférieur si besoin)
+    }
+  }, 350);
+}
 function renderTiles(){
   if(baseLayer==='none'){
     if(_tileElements.size){ tileLayerEl.innerHTML=''; _tileElements.clear(); }
@@ -1289,12 +1343,14 @@ function renderTiles(){
   const [W,H] = dims();
   const cx=lonToX(center.lon,zoom), cy=latToY(center.lat,zoom);
   const originX=cx-W/2, originY=cy-H/2;
-  const n=Math.pow(2,zoom);
-  const firstX=Math.floor(originX/TILE_SIZE), firstY=Math.floor(originY/TILE_SIZE);
-  const lastX=Math.floor((originX+W)/TILE_SIZE), lastY=Math.floor((originY+H)/TILE_SIZE);
+  const nz = nativeZoomFor(baseLayer, zoom);
+  const scale = Math.pow(2, zoom-nz), S = TILE_SIZE*scale;      // taille à l'écran d'une tuile de zoom natif nz
+  const n=Math.pow(2,nz);
+  const firstX=Math.floor(originX/S), firstY=Math.floor(originY/S);
+  const lastX=Math.floor((originX+W)/S), lastY=Math.floor((originY+H)/S);
 
-  const layerChanged = !_lastTileParams || _lastTileParams.baseLayer!==baseLayer || _lastTileParams.zoom!==zoom;
-  _lastTileParams = {baseLayer, zoom};
+  const layerChanged = !_lastTileParams || _lastTileParams.baseLayer!==baseLayer || _lastTileParams.zoom!==zoom || _lastTileParams.nz!==nz;
+  _lastTileParams = {baseLayer, zoom, nz};
   if(layerChanged){
     // couche ou zoom différents : les tuiles existantes ne correspondent plus à rien, on repart de zéro
     tileLayerEl.innerHTML = '';
@@ -1308,13 +1364,13 @@ function renderTiles(){
       const wx=((tx%n)+n)%n;
       const key = tx+','+ty;
       needed.add(key);
-      const sx=tx*TILE_SIZE-originX, sy=ty*TILE_SIZE-originY;
+      const sx=tx*S-originX, sy=ty*S-originY;
       let img = _tileElements.get(key);
       if(!img){
         // nouvelle tuile qui entre dans le cadre — seule celle-ci est (re)chargée
         img = document.createElementNS(SVGNS,'image');
-        img.setAttribute('href', tileUrl(baseLayer,zoom,wx,ty));
-        img.setAttribute('width', TILE_SIZE); img.setAttribute('height', TILE_SIZE);
+        img.setAttribute('href', tileUrl(baseLayer,nz,wx,ty));
+        img.setAttribute('width', S); img.setAttribute('height', S);
         img.setAttribute('preserveAspectRatio','none');
         tileLayerEl.appendChild(img);
         _tileElements.set(key, img);
@@ -1328,11 +1384,14 @@ function renderTiles(){
   for(const [key,img] of _tileElements){
     if(!needed.has(key)){ img.remove(); _tileElements.delete(key); }
   }
+  updateAttribution(nz);
+  if(baseLayer==='sat') scheduleSatProbes(nz, firstX,lastX,firstY,lastY, n, satCell(center.lat,center.lon));
 }
-function updateAttribution(){
+function updateAttribution(nz){
   const el=document.getElementById('mapAttrib');
-  if(baseLayer==='osm') el.innerHTML='© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors';
-  else if(baseLayer==='sat') el.innerHTML='Tiles © Esri';
+  const over = (typeof nz==='number' && zoom>nz) ? ' · image agrandie (couverture z'+nz+')' : '';
+  if(baseLayer==='osm') el.innerHTML='© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'+over;
+  else if(baseLayer==='sat') el.innerHTML='Tiles © Esri'+over;
   else el.innerHTML='';
   el.style.display = baseLayer==='none' ? 'none':'block';
 }
@@ -1712,7 +1771,7 @@ function finalizePinch(){
   const [W,H]=dims();
   const [midLat,midLon]=unproject(pinch.midX,pinch.midY,W,H); // zoom/center encore ceux d'avant le geste
   const deltaZoom=Math.log2(pinch.lastRatio||1);
-  zoom=Math.max(3, Math.min(19, Math.round(pinch.startZoom+deltaZoom)));
+  zoom=Math.max(3, Math.min(ZOOM_MAX, Math.round(pinch.startZoom+deltaZoom)));
   const wx=lonToX(midLon,zoom), wy=latToY(midLat,zoom);
   center={ lat:yToLat(wy-pinch.midY+H/2,zoom), lon:xToLon(wx-pinch.midX+W/2,zoom) };
   layer.style.transform=''; layer.style.transformOrigin='';
@@ -1910,7 +1969,7 @@ document.getElementById('btnFollow').addEventListener('click', e=>{
   e.currentTarget.classList.toggle('on', followMode);
   if(followMode && currentPos){ center={lat:currentPos.lat,lon:currentPos.lon}; renderMap(); }
 });
-document.getElementById('btnZoomIn').addEventListener('click', ()=>{ zoom=Math.min(19, zoom+1); renderMap(); });
+document.getElementById('btnZoomIn').addEventListener('click', ()=>{ zoom=Math.min(ZOOM_MAX, zoom+1); renderMap(); });
 document.getElementById('btnZoomOut').addEventListener('click', ()=>{ zoom=Math.max(3, zoom-1); renderMap(); });
 document.getElementById('btnLayer').addEventListener('click', cycleBaseLayer);
 document.getElementById('btnMeasure').addEventListener('click', e=>{
