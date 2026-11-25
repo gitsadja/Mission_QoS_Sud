@@ -133,14 +133,26 @@ header .sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text-mute);
 .site-row .ext-flag{font-size:9.5px;font-family:var(--font-mono);background:#e6fbfb;color:var(--cyan);border-radius:5px;padding:2px 6px;margin-top:4px;display:inline-block;}
 
 /* ---------- points list (slide-up panel) ---------- */
-#listPanel, #sitesPanel{
+#listPanel, #sitesPanel, #coordsPanel{
   position:absolute; left:0; right:0; bottom:0; z-index:40;
   background:var(--bg); border-radius:18px 18px 0 0; box-shadow:0 -8px 24px rgba(13,15,20,.18);
   max-height:78%; display:flex; flex-direction:column;
   transform:translateY(100%); transition:transform .22s ease;
   padding-bottom:var(--safe-b);
 }
-#listPanel.open, #sitesPanel.open{transform:translateY(0);}
+#listPanel.open, #sitesPanel.open, #coordsPanel.open{transform:translateY(0);}
+#multiBar{position:absolute; left:10px; right:10px; bottom:calc(92px + var(--safe-b)); z-index:26; display:none; align-items:center; gap:8px; background:rgba(13,15,20,.92); color:#fff; border-radius:12px; padding:9px 10px; font-size:12.5px;}
+#multiBar.show{display:flex;}
+#multiBar span{flex:1;line-height:1.3;}
+#multiBar button{border:none;border-radius:8px;padding:8px 10px;font-size:12.5px;font-weight:700;flex:none;}
+#multiBar .undo{background:rgba(255,255,255,.15);color:#fff;}
+#multiBar .done{background:var(--orange);color:#fff;}
+#coordsPanel{padding-bottom:calc(10px + var(--safe-b));}
+#coordsBody{padding:12px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
+#coordsText{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;font-family:var(--font-mono);background:var(--bg-soft);color:var(--text);min-height:130px;}
+#coordsReport{font-size:11.5px;color:var(--text-mute);line-height:1.5;max-height:110px;overflow-y:auto;}
+#coordsReport .bad{color:#b3261e;}
+
 /* panneau Sites : tout le panneau défile (la liste en bas ne s'écrase plus), barre de défilement visible */
 #sitesPanel{max-height:88%; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#FF6600 #f0f1f3;}
 #sitesPanel::-webkit-scrollbar{width:6px;}
@@ -265,7 +277,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.11.05</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.11.06</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -284,6 +296,7 @@ textarea#pointNotes{
 
     <div class="gpsbadge searching" id="gpsBadge"><b>Recherche…</b></div>
     <div class="quicklayers" id="quickLayers"></div>
+    <div id="multiBar"><span id="multiBarText">Pointage rapide : touche la carte, un toucher = un point</span><button class="undo" id="btnMultiUndo">↩ Annuler</button><button class="done" id="btnMultiDone">✓ Terminer</button></div>
     <div id="pointConfirmBar">
       <span>Placer un point ici ?</span>
       <button class="cancel" id="btnCancelPoint">✕ Annuler</button>
@@ -300,6 +313,8 @@ textarea#pointNotes{
       <button id="btnSearch" title="Rechercher">🔍</button>
       <button id="btnLayer" title="Fond de carte (Plan / Satellite / Aucun)">🗺️</button>
       <button id="btnMeasure" title="Mesurer une distance">📏</button>
+      <button id="btnMulti" title="Pointage rapide : un toucher = un point">📌</button>
+      <button id="btnCoords" title="Coller plusieurs coordonnées">📥</button>
       <button id="btnFollow" class="on" title="Suivre ma position">🎯</button>
       <button id="btnZoomIn" title="Zoomer">+</button>
       <button id="btnZoomOut" title="Dézoomer">–</button>
@@ -319,6 +334,22 @@ textarea#pointNotes{
       <button id="btnCloseList">✕</button>
     </div>
     <div id="pointsList"></div>
+  </div>
+
+  <div id="coordsPanel">
+    <div class="panel-handle"></div>
+    <div class="panel-head">
+      <h2>Coller des coordonnées</h2>
+      <button id="btnCloseCoords">✕</button>
+    </div>
+    <div id="coordsBody">
+      <textarea id="coordsText" placeholder="Une ligne = un point : [nom] latitude longitude&#10;ex.&#10;SINDIA 12.96390 -16.18697&#10;12,9633 ; -16,2245&#10;Pylône nord, 12.5832, -15.5379" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+      <div id="coordsReport">Colle ou tape les coordonnées (décimales, séparées par espace, tabulation, « ; » ou « , »). Le nom est facultatif.</div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn primary" id="btnCoordsCreate" style="padding:10px 8px;font-size:12.5px;" disabled>Créer les points</button>
+        <button class="btn" id="btnCoordsClear" style="flex:none;padding:10px 12px;font-size:12.5px;">Effacer</button>
+      </div>
+    </div>
   </div>
 
   <div id="sitesPanel">
@@ -1843,6 +1874,10 @@ function endPointer(e){
     if(tp){ cancelPointConfirm(); openEditor(tp.dataset.point); }
     else if(ts){ cancelPointConfirm(); openSiteDetail(ts.dataset.site); }
     else if(tsp){ searchPin=null; renderMap(); toast('Repère retiré'); }
+    else if(multiMode){
+      const [lat,lon]=unproject(px,py,rect.width,rect.height);
+      multiAdd(lat,lon,null);
+    }
     else {
       const now=Date.now();
       const isDoubleTap = lastTapPos && (now-lastTapTime)<DOUBLE_TAP_MS && Math.hypot(px-lastTapPos[0],py-lastTapPos[1])<DOUBLE_TAP_PX;
@@ -1973,6 +2008,7 @@ document.getElementById('btnZoomIn').addEventListener('click', ()=>{ zoom=Math.m
 document.getElementById('btnZoomOut').addEventListener('click', ()=>{ zoom=Math.max(3, zoom-1); renderMap(); });
 document.getElementById('btnLayer').addEventListener('click', cycleBaseLayer);
 document.getElementById('btnMeasure').addEventListener('click', e=>{
+  if(multiMode) setMultiMode(false);
   measuring=!measuring; measurePts=[];
   e.currentTarget.classList.toggle('on', measuring);
   cancelPointConfirm();
@@ -2008,7 +2044,111 @@ btnMark.addEventListener('click', ()=>{
   if(!currentPos){ toast('Position GPS non disponible pour le moment'); return; }
   const useBest = (bestRecentPos && (Date.now()-bestRecentPos.ts)<BEST_POS_MAX_AGE_MS) ? bestRecentPos : currentPos;
   if(useBest.accuracy>40) toast('Précision faible (±'+Math.round(useBest.accuracy)+' m) — le point est quand même marqué');
+  if(multiMode){ multiAdd(useBest.lat, useBest.lon, useBest.accuracy); return; }
   addPoint(useBest.lat, useBest.lon, useBest.accuracy, true);
+});
+
+
+/* =========================================================
+   6C. POINTAGE MULTIPLE — mode rapide (un toucher = un point) et collage de coordonnées
+   ========================================================= */
+let multiMode=false, multiStack=[];
+function setMultiMode(on){
+  multiMode=!!on; multiStack=[];
+  document.getElementById('btnMulti').classList.toggle('on',multiMode);
+  document.getElementById('multiBar').classList.toggle('show',multiMode);
+  if(multiMode){
+    if(measuring){ measuring=false; measurePts=[]; document.getElementById('btnMeasure').classList.remove('on'); }
+    cancelPointConfirm();
+    document.getElementById('listPanel').classList.remove('open'); document.getElementById('sitesPanel').classList.remove('open');
+    multiBarUpdate();
+  }
+  renderMap();
+}
+function multiBarUpdate(){
+  const n=multiStack.length;
+  document.getElementById('multiBarText').textContent = n ? ('Pointage rapide : '+n+' point'+(n>1?'s':'')+' posé'+(n>1?'s':'')+' — continue de toucher la carte') : 'Pointage rapide : touche la carte, un toucher = un point';
+  document.getElementById('btnMultiUndo').style.display = n ? '' : 'none';
+}
+function multiAdd(lat,lon,accuracy){
+  const p=addPoint(lat,lon,accuracy,false);
+  multiStack.push(p.id); multiBarUpdate();
+  toast(p.name+' posé');
+  return p;
+}
+document.getElementById('btnMulti').addEventListener('click', ()=>setMultiMode(!multiMode));
+document.getElementById('btnMultiDone').addEventListener('click', ()=>{
+  const n=multiStack.length; setMultiMode(false);
+  if(n) toast(n+' point'+(n>1?'s':'')+' enregistré'+(n>1?'s':'')+' — retrouve-les dans 📋');
+});
+document.getElementById('btnMultiUndo').addEventListener('click', async ()=>{
+  const id=multiStack.pop(); if(!id) return;
+  await deletePoint(id); pointCounter=Math.max(0,pointCounter-1); multiBarUpdate();
+});
+
+/* collage : une ligne = [nom] latitude longitude (les deux derniers nombres de la ligne) */
+function parseCoordLines(text){
+  const ok=[], bad=[];
+  String(text||'').split(/\r?\n/).forEach((raw,i)=>{
+    const line=raw.trim(); if(!line) return;
+    const nums=[...line.matchAll(/-?\d+(?:[.,]\d+)?/g)];
+    if(nums.length<2){ bad.push({n:i+1,line,why:'2 nombres attendus'}); return; }
+    const a=nums[nums.length-2], b=nums[nums.length-1];
+    let lat=toFloatSmart(a[0]), lon=toFloatSmart(b[0]);
+    if(!validLatLon(lat,lon) && validLatLon(lon,lat)){ const t=lat; lat=lon; lon=t; }   // lon lat collés à l'envers
+    if(!validLatLon(lat,lon)){ bad.push({n:i+1,line,why:'coordonnées hors limites'}); return; }
+    if(!/[.,]\d/.test(a[0]) && !/[.,]\d/.test(b[0])){ bad.push({n:i+1,line,why:'coordonnées entières, décimales attendues'}); return; }
+    const name=(line.slice(0,a.index)+' '+line.slice(a.index+a[0].length,b.index)+' '+line.slice(b.index+b[0].length)).replace(/[\s;,:|\t]+/g,' ').replace(/^[\s\-–—]+|[\s\-–—]+$/g,'').trim();
+    ok.push({n:i+1,name,lat,lon});
+  });
+  return {ok,bad};
+}
+function coordsRefresh(){
+  const r=parseCoordLines(document.getElementById('coordsText').value);
+  const rep=document.getElementById('coordsReport'), btn=document.getElementById('btnCoordsCreate');
+  if(!r.ok.length && !r.bad.length){ rep.textContent='Colle ou tape les coordonnées (décimales, séparées par espace, tabulation, « ; » ou « , »). Le nom est facultatif.'; btn.disabled=true; btn.textContent='Créer les points'; return r; }
+  rep.innerHTML='<b>'+r.ok.length+'</b> point'+(r.ok.length>1?'s':'')+' valide'+(r.ok.length>1?'s':'')+(r.bad.length?' · <span class="bad">'+r.bad.length+' ligne'+(r.bad.length>1?'s':'')+' ignorée'+(r.bad.length>1?'s':'')+'</span>':'')
+    +(r.bad.length?'<br>'+r.bad.slice(0,5).map(b=>'<span class="bad">ligne '+b.n+' : '+b.why+'</span>').join('<br>')+(r.bad.length>5?'<br><span class="bad">…</span>':''):'');
+  btn.disabled=!r.ok.length; btn.textContent=r.ok.length?('Créer '+r.ok.length+' point'+(r.ok.length>1?'s':'')):'Créer les points';
+  return r;
+}
+function fitToPoints(list){
+  if(!list.length) return;
+  const [W,H]=dims();
+  const la0=Math.min(...list.map(p=>p.lat)), la1=Math.max(...list.map(p=>p.lat));
+  const lo0=Math.min(...list.map(p=>p.lon)), lo1=Math.max(...list.map(p=>p.lon));
+  center={lat:(la0+la1)/2, lon:(lo0+lo1)/2};
+  let z=ZOOM_MAX;
+  for(; z>3; z--){
+    const w=Math.abs(lonToX(lo1,z)-lonToX(lo0,z)), h=Math.abs(latToY(la0,z)-latToY(la1,z));
+    if(w<=W-90 && h<=H-190) break;
+  }
+  zoom=Math.min(z,17);
+  followMode=false; document.getElementById('btnFollow').classList.remove('on');
+}
+function openCoordsPanel(){
+  cancelPointConfirm(); if(multiMode) setMultiMode(false);
+  document.getElementById('listPanel').classList.remove('open'); document.getElementById('sitesPanel').classList.remove('open');
+  document.getElementById('coordsPanel').classList.add('open'); coordsRefresh();
+}
+document.getElementById('btnCoords').addEventListener('click', openCoordsPanel);
+document.getElementById('btnCloseCoords').addEventListener('click', ()=>document.getElementById('coordsPanel').classList.remove('open'));
+document.getElementById('coordsText').addEventListener('input', coordsRefresh);
+document.getElementById('btnCoordsClear').addEventListener('click', ()=>{ document.getElementById('coordsText').value=''; coordsRefresh(); });
+document.getElementById('btnCoordsCreate').addEventListener('click', async ()=>{
+  const r=parseCoordLines(document.getElementById('coordsText').value); if(!r.ok.length) return;
+  const t0=Date.now(), made=[];
+  r.ok.forEach((o,i)=>{
+    pointCounter++;
+    const p={ id:uid(), name:o.name||('Point '+pointCounter), lat:o.lat, lon:o.lon, accuracy:null, ts:t0+i, notes:'', media:[] };
+    points.push(p); made.push(p);
+  });
+  searchPin=null;
+  for(const p of made) await persistPoint(p);
+  fitToPoints(made); renderAll();
+  document.getElementById('coordsText').value=''; coordsRefresh();
+  document.getElementById('coordsPanel').classList.remove('open');
+  toast(made.length+' point'+(made.length>1?'s':'')+' créé'+(made.length>1?'s':'')+(r.bad.length?' ('+r.bad.length+' ligne'+(r.bad.length>1?'s':'')+' ignorée'+(r.bad.length>1?'s':'')+')':''));
 });
 
 async function deletePoint(id){
