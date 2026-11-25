@@ -147,6 +147,38 @@ header .sub{font-family:var(--font-mono);font-size:9.5px;color:var(--text-mute);
 #multiBar button{border:none;border-radius:8px;padding:8px 10px;font-size:12.5px;font-weight:700;flex:none;}
 #multiBar .undo{background:rgba(255,255,255,.15);color:#fff;}
 #multiBar .done{background:var(--orange);color:#fff;}
+#kmlPanel{position:absolute; left:0; right:0; bottom:0; z-index:40; background:var(--bg); border-radius:18px 18px 0 0; box-shadow:0 -8px 24px rgba(13,15,20,.18); max-height:80%; display:flex; flex-direction:column; transform:translateY(100%); transition:transform .22s ease; padding-bottom:var(--safe-b);}
+#kmlPanel.open{transform:translateY(0);}
+#kmlBody{padding:12px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch;}
+#kmlStatus{font-size:11.5px;color:var(--text-mute);min-height:0;}
+#kmlStatus:empty{display:none;}
+.kml-empty{font-size:12px;color:var(--text-mute);line-height:1.55;padding:6px 2px;}
+.kml-card{border:1px solid var(--border);border-radius:12px;background:#fff;padding:9px 10px;display:flex;flex-direction:column;gap:7px;}
+.kml-row{display:flex;align-items:center;gap:9px;}
+.kml-vis{width:20px;height:20px;accent-color:var(--orange);flex:none;}
+.kml-body{flex:1;min-width:0;}
+.kml-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kml-meta{font-family:var(--font-mono);font-size:10px;color:var(--text-mute);margin-top:1px;}
+.kml-ic{border:1px solid var(--border);background:var(--bg-soft);border-radius:9px;min-width:34px;height:34px;font-size:14px;flex:none;padding:0 6px;}
+.kml-ic.arm{background:#fdecea;color:#b3261e;border-color:#f3b8b3;font-size:11px;font-weight:700;}
+.kml-row2{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-mute);}
+.kml-row2 input[type=range]{flex:1;accent-color:var(--orange);min-width:0;}
+.kml-tg{border:none;background:var(--bg-soft);border-radius:8px;padding:6px 9px;font-size:11px;font-weight:700;color:var(--text-soft);flex:none;}
+.kml-tree{max-height:190px;overflow-y:auto;border-top:1px solid var(--border);padding-top:6px;display:flex;flex-direction:column;gap:4px;}
+.kml-f{display:flex;align-items:center;gap:6px;font-size:12px;}
+.kml-f input{accent-color:var(--orange);}
+.kml-f .off{color:var(--text-mute);}
+.kml-f i{font-style:normal;font-family:var(--font-mono);font-size:10px;color:var(--text-mute);}
+#kmlInfo{position:absolute; left:10px; right:10px; bottom:calc(92px + var(--safe-b)); z-index:27; display:none; background:#fff; border:1px solid var(--border); border-radius:14px; box-shadow:0 6px 22px rgba(13,15,20,.2); padding:10px 12px; max-height:42%; overflow-y:auto;}
+#kmlInfo.show{display:block;}
+#kmlInfo .k-head{display:flex;align-items:flex-start;gap:9px;}
+#kmlInfoSwatch{width:14px;height:14px;border-radius:4px;border:1px solid rgba(13,15,20,.25);margin-top:3px;flex:none;}
+#kmlInfoTitle{font-weight:700;font-size:13.5px;line-height:1.3;word-break:break-word;}
+#kmlInfoSub{font-size:10.5px;color:var(--text-mute);font-family:var(--font-mono);margin-top:1px;}
+#kmlInfoBody{font-size:12px;line-height:1.5;white-space:pre-wrap;margin-top:7px;word-break:break-word;}
+#kmlInfoCoord{font-family:var(--font-mono);font-size:11px;color:var(--text-soft);margin-top:6px;}
+#kmlInfo .k-x{border:none;background:var(--bg-soft);border-radius:8px;width:30px;height:30px;font-size:13px;flex:none;}
+#kmlInfo .k-act{margin-top:8px;border:none;background:var(--orange);color:#fff;border-radius:9px;padding:8px 12px;font-size:12px;font-weight:700;}
 #coordsPanel{padding-bottom:calc(10px + var(--safe-b));}
 #coordsBody{padding:12px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
 #coordsText{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;font-family:var(--font-mono);background:var(--bg-soft);color:var(--text);min-height:130px;}
@@ -277,7 +309,7 @@ textarea#pointNotes{
     <div class="mark">OS</div>
     <div>
       <h1>Notes Terrain</h1>
-      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.11.06</span></span>
+      <span class="sub">Mission QoS · Relevé de points · <span id="appVersion" style="font-weight:700;color:var(--orange-dark);">v2026.11.07</span></span>
     </div>
     <div class="hdr-stats">
       <div class="hdr-stat"><b id="statPoints">0</b><small>Points</small></div>
@@ -296,6 +328,12 @@ textarea#pointNotes{
 
     <div class="gpsbadge searching" id="gpsBadge"><b>Recherche…</b></div>
     <div class="quicklayers" id="quickLayers"></div>
+    <div id="kmlInfo">
+      <div class="k-head"><span id="kmlInfoSwatch"></span><div style="flex:1;min-width:0;"><div id="kmlInfoTitle"></div><div id="kmlInfoSub"></div></div><button class="k-x" id="btnKmlInfoClose">✕</button></div>
+      <div id="kmlInfoBody"></div>
+      <div id="kmlInfoCoord"></div>
+      <button class="k-act" id="btnKmlInfoPoint">📍 Créer un point ici</button>
+    </div>
     <div id="multiBar"><span id="multiBarText">Pointage rapide : touche la carte, un toucher = un point</span><button class="undo" id="btnMultiUndo">↩ Annuler</button><button class="done" id="btnMultiDone">✓ Terminer</button></div>
     <div id="pointConfirmBar">
       <span>Placer un point ici ?</span>
@@ -315,6 +353,7 @@ textarea#pointNotes{
       <button id="btnMeasure" title="Mesurer une distance">📏</button>
       <button id="btnMulti" title="Pointage rapide : un toucher = un point">📌</button>
       <button id="btnCoords" title="Coller plusieurs coordonnées">📥</button>
+      <button id="btnKml" title="Couches KMZ / KML">📂</button>
       <button id="btnFollow" class="on" title="Suivre ma position">🎯</button>
       <button id="btnZoomIn" title="Zoomer">+</button>
       <button id="btnZoomOut" title="Dézoomer">–</button>
@@ -334,6 +373,20 @@ textarea#pointNotes{
       <button id="btnCloseList">✕</button>
     </div>
     <div id="pointsList"></div>
+  </div>
+
+  <div id="kmlPanel">
+    <div class="panel-handle"></div>
+    <div class="panel-head">
+      <h2>Couches KMZ / KML</h2>
+      <button id="btnCloseKml">✕</button>
+    </div>
+    <div id="kmlBody">
+      <input type="file" id="fileInputKml" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml,application/octet-stream" multiple style="display:none;">
+      <button class="btn primary" id="btnKmlImport" style="padding:11px 8px;font-size:13px;flex:none;">＋ Importer un KMZ / KML</button>
+      <div id="kmlStatus"></div>
+      <div id="kmlList"></div>
+    </div>
   </div>
 
   <div id="coordsPanel">
@@ -1086,7 +1139,7 @@ const STORE_KEY = 'terrain_notes_points_v1'; // ancien format plat — conservé
 /* =========================================================
    1B. INDEXEDDB — stockage par projet (points, photos, sites, table cellulaire)
    ========================================================= */
-const IDB_NAME = 'terrain_notes_db', IDB_VERSION = 1;
+const IDB_NAME = 'terrain_notes_db', IDB_VERSION = 2;
 let _idbPromise = null;
 function openIDB(){
   if(_idbPromise) return _idbPromise;
@@ -1111,6 +1164,11 @@ function openIDB(){
         s.createIndex('projectId','projectId',{unique:false});
       }
       if(!db.objectStoreNames.contains('celltable')) db.createObjectStore('celltable', {keyPath:'projectId'});
+      if(!db.objectStoreNames.contains('kml')){
+        const s = db.createObjectStore('kml', {keyPath:'id'});
+        s.createIndex('projectId','projectId',{unique:false});
+      }
+      if(!db.objectStoreNames.contains('kmlfeat')) db.createObjectStore('kmlfeat', {keyPath:'id'});
     };
     req.onsuccess = ()=>resolve(req.result);
     req.onerror = ()=>reject(req.error);
@@ -1178,6 +1236,9 @@ async function wipeProjectData(id){
   await idbDeleteByIndex('points','projectId', id);
   await idbDeleteByIndex('sites','projectId', id);
   await idbDelete('celltable', id);
+  const kh = await idbGetAll('kml','projectId', id);
+  for(const h of kh){ await idbDelete('kmlfeat', h.id); }
+  await idbDeleteByIndex('kml','projectId', id);
 }
 async function deleteProject(id){
   if(PROJECTS.length<=1){ toast('Impossible de supprimer le dernier projet restant'); return false; }
@@ -1207,6 +1268,7 @@ async function loadActiveProjectData(){
     CELL_TABLE = [];
     if(document.getElementById('cellTableStatus')) document.getElementById('cellTableStatus').textContent = '';
   }
+  await kmlLoadLayers();
 }
 async function setActiveProject(id, skipRender){
   activeProjectId = id;
@@ -1264,6 +1326,8 @@ let pointCounter = 0;
 let currentPos = null;         // {lat,lon,accuracy,ts}
 let watchId = null;
 let followMode = true;
+let KML_LAYERS = [];           // couches KMZ/KML du projet actif
+let kmlImgLayerEl = null; const kmlImgEls = new Map();
 let center = null;             // {lat,lon} centre courant de la carte
 let zoom = 17;                 // niveau de zoom entier (style carte à tuiles), 3–19
 let baseLayer = 'osm';         // 'osm' | 'sat' | 'none'
@@ -1724,6 +1788,8 @@ function renderMap(){
   // repère nord discret
   parts.push(`<line x1="${W-26}" y1="18" x2="${W-26}" y2="34" stroke="#8a93a3" stroke-width="1.4"/><polygon points="${W-26},12 ${W-31},22 ${W-21},22" fill="#8a93a3"/>`);
 
+  renderKml(parts,W,H);
+
   if(pendingPoint){
     const [gx,gy] = project(pendingPoint.lat, pendingPoint.lon, W, H);
     parts.push(`<circle cx="${gx}" cy="${gy}" r="13" fill="#FF6600" fill-opacity="0.18" stroke="#FF6600" stroke-width="2" stroke-dasharray="4,3"/>`);
@@ -1882,11 +1948,12 @@ function endPointer(e){
       const now=Date.now();
       const isDoubleTap = lastTapPos && (now-lastTapTime)<DOUBLE_TAP_MS && Math.hypot(px-lastTapPos[0],py-lastTapPos[1])<DOUBLE_TAP_PX;
       if(isDoubleTap){
-        lastTapTime=0; lastTapPos=null;
+        lastTapTime=0; lastTapPos=null; kmlInfoHide();
         const [lat,lon]=unproject(px,py,rect.width,rect.height);
         showPointConfirm(lat,lon);
       } else {
         lastTapTime=now; lastTapPos=[px,py];
+        kmlTap(px,py,rect.width,rect.height);
       }
     }
   }
@@ -2129,6 +2196,7 @@ function fitToPoints(list){
 function openCoordsPanel(){
   cancelPointConfirm(); if(multiMode) setMultiMode(false);
   document.getElementById('listPanel').classList.remove('open'); document.getElementById('sitesPanel').classList.remove('open');
+  document.getElementById('kmlPanel').classList.remove('open');
   document.getElementById('coordsPanel').classList.add('open'); coordsRefresh();
 }
 document.getElementById('btnCoords').addEventListener('click', openCoordsPanel);
@@ -2150,6 +2218,591 @@ document.getElementById('btnCoordsCreate').addEventListener('click', async ()=>{
   document.getElementById('coordsPanel').classList.remove('open');
   toast(made.length+' point'+(made.length>1?'s':'')+' créé'+(made.length>1?'s':'')+(r.bad.length?' ('+r.bad.length+' ligne'+(r.bad.length>1?'s':'')+' ignorée'+(r.bad.length>1?'s':'')+')':''));
 });
+
+/* =========================================================
+   6D. COUCHES KMZ / KML — import avec styles conservés
+   (couleurs aabbggrr, transparence, épaisseurs, remplissages, icônes, GroundOverlay)
+   ========================================================= */
+const KML_MAX_PTS = 3500;      // au-delà, les points sont éclaircis à l'écran (grille de pixels)
+const kChildren=(el,ln)=>{ const o=[]; if(!el) return o; for(let c=el.firstElementChild;c;c=c.nextElementSibling) if(c.localName===ln) o.push(c); return o; };
+const kChild=(el,ln)=>{ if(!el) return null; for(let c=el.firstElementChild;c;c=c.nextElementSibling) if(c.localName===ln) return c; return null; };
+const kText=(el,ln)=>{ const c=kChild(el,ln); return c ? c.textContent.trim() : ''; };
+
+function kmlColor(s){
+  s=String(s||'').trim().replace('#','');
+  if(!/^[0-9a-fA-F]{6,8}$/.test(s)) return null;
+  if(s.length===6) s='ff'+s;
+  s=s.toLowerCase();
+  return { c:'#'+s.slice(6,8)+s.slice(4,6)+s.slice(2,4), a:Math.round(parseInt(s.slice(0,2),16)/255*100)/100 };   // aabbggrr → #rrggbb + alpha
+}
+function kmlHtmlToText(h){
+  if(!h) return '';
+  if(!/[<&]/.test(h)) return h.trim();
+  let t=String(h).replace(/<\s*br\s*\/?>/gi,'\n').replace(/<\/(tr|p|div|li|h\d)>/gi,'\n').replace(/<\/t[dh]>\s*<t[dh][^>]*>/gi,' : ');
+  try{ t=new DOMParser().parseFromString(t,'text/html').body.textContent||''; }catch(_){ t=t.replace(/<[^>]*>/g,''); }
+  return t.replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim().slice(0,1500);
+}
+function kmlCoordsFlat(str){
+  const out=[]; if(!str) return out;
+  const toks=String(str).replace(/\s*,\s*/g,',').trim().split(/\s+/);
+  for(let i=0;i<toks.length;i++){
+    const t=toks[i]; if(!t) continue;
+    const a=t.split(','); const lo=parseFloat(a[0]), la=parseFloat(a[1]);
+    if(isFinite(lo)&&isFinite(la)&&Math.abs(la)<=90&&Math.abs(lo)<=180) out.push(lo,la);
+  }
+  return out;
+}
+function kmlMime(name){
+  const e=(String(name).split('.').pop()||'').toLowerCase();
+  return {png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml',bmp:'image/bmp'}[e]||'image/png';
+}
+function blobToDataUrl(blob){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>rej(fr.error); fr.readAsDataURL(blob); }); }
+function kmlShapeFromHref(href){
+  const f=String(href||'').toLowerCase().split('/').pop();
+  if(/square|rect/.test(f)) return 's';
+  if(/triang/.test(f)) return 't';
+  if(/diamond/.test(f)) return 'd';
+  return 'c';
+}
+const KML_DEFAULT_STYLE = { l:{c:'#ffffff',a:1,w:1}, p:{c:'#ffffff',a:1,f:1,o:1}, i:null, t:null };
+
+/* parse le texte XML d'un KML. getImg(href,maxBytes) → clé d'image (dans imgs) ou null */
+async function kmlParse(xmlText, getImg, fname){
+  const doc=new DOMParser().parseFromString(xmlText,'application/xml');
+  if(doc.getElementsByTagName('parsererror').length) throw new Error('XML invalide (fichier KML corrompu ?)');
+  const root=doc.documentElement;
+  if(!root || root.localName!=='kml') throw new Error('Ce fichier n\'est pas un KML');
+  const rawStyles={}, styleMaps={};
+  root.querySelectorAll('Style,StyleMap').forEach(el=>{
+    const id=el.getAttribute('id'); if(!id) return;
+    if(el.localName==='Style') rawStyles[id]=el; else styleMaps[id]=el;
+  });
+  const imgs={}, stylesArr=[], styleIdx=new Map(), styleByUrl={};
+  const folders=[], feats=[], overlays=[];
+  let skipped=0, tick=0;
+  const intern=o=>{ const k=JSON.stringify(o); let i=styleIdx.get(k); if(i===undefined){ i=stylesArr.length; stylesArr.push(o); styleIdx.set(k,i); } return i; };
+  const imgKey=async(href,max)=>{
+    if(!href || /^https?:/i.test(href)) return null;
+    if(/^data:/i.test(href)){ const k='d'+Object.keys(imgs).length; imgs[k]=href; return k; }
+    if(imgs[href]) return href;
+    const du=await getImg(href,max);
+    if(!du) return null;
+    imgs[href]=du; return href;
+  };
+
+  async function parseStyleEl(st){
+    const o={ l:{c:'#ffffff',a:1,w:1}, p:{c:'#ffffff',a:1,f:1,o:1}, i:null, t:null };
+    const ls=kChild(st,'LineStyle');
+    if(ls){ const c=kmlColor(kText(ls,'color')); if(c){ o.l.c=c.c; o.l.a=c.a; } const w=parseFloat(kText(ls,'width')); if(isFinite(w)) o.l.w=w; }
+    const ps=kChild(st,'PolyStyle');
+    if(ps){ const c=kmlColor(kText(ps,'color')); if(c){ o.p.c=c.c; o.p.a=c.a; }
+      const f=kText(ps,'fill'), ou=kText(ps,'outline'); if(f!=='') o.p.f=(f==='0'||f==='false')?0:1; if(ou!=='') o.p.o=(ou==='0'||ou==='false')?0:1; }
+    const is=kChild(st,'IconStyle');
+    if(is){
+      const I={ c:'#ffffff', a:1, s:1, k:null, sh:'c', hd:0, ax:.5, ay:.5 };
+      const c=kmlColor(kText(is,'color')); if(c){ I.c=c.c; I.a=c.a; }
+      const sc=parseFloat(kText(is,'scale')); if(isFinite(sc)&&sc>0) I.s=sc;
+      const hd=parseFloat(kText(is,'heading')); if(isFinite(hd)) I.hd=hd;
+      const href=kText(kChild(is,'Icon'),'href');
+      if(href){
+        const k=await imgKey(href,400*1024);
+        if(k) I.k=k; else I.sh=kmlShapeFromHref(href);
+        const hs=kChild(is,'hotSpot');
+        if(hs){
+          const x=parseFloat(hs.getAttribute('x')), y=parseFloat(hs.getAttribute('y')), xu=hs.getAttribute('xunits')||'fraction', yu=hs.getAttribute('yunits')||'fraction';
+          if(isFinite(x)) I.ax = xu==='fraction' ? x : Math.min(1,Math.max(0,x/32));
+          if(isFinite(y)) I.ay = yu==='fraction' ? y : Math.min(1,Math.max(0,y/32));
+        }
+      }
+      o.i=I;
+    }
+    const lb=kChild(st,'LabelStyle');
+    if(lb){ o.t={c:null,s:1}; const c=kmlColor(kText(lb,'color')); if(c) o.t.c=c.c; const sc=parseFloat(kText(lb,'scale')); if(isFinite(sc)&&sc>0) o.t.s=sc; }
+    return o;
+  }
+  async function styleOfUrl(su,depth){
+    if(!su) return intern(KML_DEFAULT_STYLE);
+    const id=su.split('#').pop();
+    if(styleByUrl[id]!==undefined) return styleByUrl[id];
+    let idx;
+    if(styleMaps[id] && (depth||0)<4){
+      const pair=kChildren(styleMaps[id],'Pair').find(p=>kText(p,'key')==='normal');
+      if(pair){
+        const inl=kChild(pair,'Style');
+        idx = inl ? intern(await parseStyleEl(inl)) : await styleOfUrl(kText(pair,'styleUrl'),(depth||0)+1);
+      } else idx=intern(KML_DEFAULT_STYLE);
+    } else if(rawStyles[id]) idx=intern(await parseStyleEl(rawStyles[id]));
+    else idx=intern(KML_DEFAULT_STYLE);
+    styleByUrl[id]=idx; return idx;
+  }
+
+  function collectGeoms(el,out){
+    for(let c=el.firstElementChild;c;c=c.nextElementSibling){
+      const ln=c.localName;
+      if(ln==='Point'){ const a=kmlCoordsFlat(kText(c,'coordinates')); if(a.length>=2) out.push({t:'p',x:a[0],y:a[1]}); }
+      else if(ln==='LineString'||ln==='LinearRing'){ const a=kmlCoordsFlat(kText(c,'coordinates')); if(a.length>=4) out.push({t:'l',g:[a]}); }
+      else if(ln==='Polygon'){
+        const rings=[]; const ob=kChild(kChild(c,'outerBoundaryIs'),'LinearRing');
+        if(ob){ const a=kmlCoordsFlat(kText(ob,'coordinates')); if(a.length>=6) rings.push(a); }
+        kChildren(c,'innerBoundaryIs').forEach(ib=>{ const a=kmlCoordsFlat(kText(kChild(ib,'LinearRing'),'coordinates')); if(a.length>=6) rings.push(a); });
+        if(rings.length) out.push({t:'g',g:rings});
+      }
+      else if(ln==='Track'){
+        const a=[]; kChildren(c,'coord').forEach(cc=>{ const p=cc.textContent.trim().split(/\s+/); const lo=parseFloat(p[0]), la=parseFloat(p[1]); if(isFinite(lo)&&isFinite(la)) a.push(lo,la); });
+        if(a.length>=4) out.push({t:'l',g:[a]});
+      }
+      else if(ln==='MultiGeometry'||ln==='MultiTrack') collectGeoms(c,out);
+    }
+  }
+  const bboxOf=rings=>{ let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const r of rings) for(let i=0;i<r.length;i+=2){ const x=r[i],y=r[i+1]; if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; } return [x0,y0,x1,y1]; };
+
+  async function doPlacemark(pm,fi){
+    const name=kText(pm,'name');
+    let desc=kmlHtmlToText(kText(pm,'description'));
+    const ed=kChild(pm,'ExtendedData');
+    if(ed){
+      const lines=[];
+      kChildren(ed,'Data').forEach(d=>{ const v=kText(d,'value'); if(v) lines.push((d.getAttribute('name')||'')+' : '+v); });
+      ed.querySelectorAll('SimpleData').forEach(d=>{ const v=d.textContent.trim(); if(v) lines.push((d.getAttribute('name')||'')+' : '+v); });
+      if(lines.length) desc=(desc?desc+'\n':'')+lines.join('\n');
+    }
+    if(desc.length>1500) desc=desc.slice(0,1500)+'…';
+    const inl=kChild(pm,'Style');
+    const si = inl ? intern(await parseStyleEl(inl)) : await styleOfUrl(kText(pm,'styleUrl'));
+    const vis=kText(pm,'visibility')==='0'?0:1;
+    const geoms=[]; collectGeoms(pm,geoms);
+    for(const g of geoms){
+      const f={ t:g.t, s:si, f:fi };
+      if(name) f.n=name; if(desc) f.d=desc; if(!vis) f.h=1;
+      if(g.t==='p'){ f.x=g.x; f.y=g.y; } else { f.g=g.g; f.b=bboxOf(g.g); }
+      feats.push(f);
+    }
+    if(fi>=0) folders[fi].c++;
+    if((++tick)%1500===0) await new Promise(r=>setTimeout(r,0));
+  }
+  async function doOverlay(go,fi){
+    const href=kText(kChild(go,'Icon'),'href');
+    let N,S,E,Wb,rot=0;
+    const llb=kChild(go,'LatLonBox');
+    if(llb){ N=parseFloat(kText(llb,'north')); S=parseFloat(kText(llb,'south')); E=parseFloat(kText(llb,'east')); Wb=parseFloat(kText(llb,'west')); rot=parseFloat(kText(llb,'rotation'))||0; }
+    else { const q=kChild(go,'LatLonQuad'); const a=q?kmlCoordsFlat(kText(q,'coordinates')):[]; if(a.length>=8){ const xs=[a[0],a[2],a[4],a[6]], ys=[a[1],a[3],a[5],a[7]]; Wb=Math.min(...xs); E=Math.max(...xs); S=Math.min(...ys); N=Math.max(...ys); } }
+    if(![N,S,E,Wb].every(isFinite)){ skipped++; return; }
+    let k=null,u=null;
+    if(/^https?:/i.test(href)) u=href; else k=await imgKey(href, 25*1024*1024);
+    if(!k && !u){ skipped++; return; }
+    const c=kmlColor(kText(go,'color'));
+    overlays.push({ n:kText(go,'name')||'Image', f:fi, k, u, box:[N,S,E,Wb], rot, a:c?c.a:1, h: kText(go,'visibility')==='0'?1:0 });
+  }
+  async function walk(node,parent){
+    for(let el=node.firstElementChild; el; el=el.nextElementSibling){
+      const ln=el.localName;
+      if(ln==='Folder'||ln==='Document'){
+        const fi=folders.length;
+        folders.push({ n:kText(el,'name')||'(dossier)', p:parent, v:kText(el,'visibility')==='0'?0:1, c:0 });
+        await walk(el,fi);
+      }
+      else if(ln==='Placemark') await doPlacemark(el,parent);
+      else if(ln==='GroundOverlay') await doOverlay(el,parent);
+      else if(ln==='NetworkLink'||ln==='ScreenOverlay'||ln==='PhotoOverlay') skipped++;
+    }
+  }
+  // un seul Document racine : pas de dossier superflu
+  let startNode=root, layerName='';
+  const kids=[...root.children].filter(k=>k.localName!=='NetworkLinkControl');
+  if(kids.length===1 && kids[0].localName==='Document') startNode=kids[0];
+  layerName=kText(startNode,'name') || kText(root,'name');
+  await walk(startNode,-1);
+  if(!layerName) layerName=String(fname||'Couche KML').replace(/\.(kmz|kml)$/i,'');
+
+  // bbox + compteurs
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; const counts={p:0,l:0,g:0,o:overlays.length};
+  for(const f of feats){
+    counts[f.t]++;
+    if(f.t==='p'){ if(f.x<x0)x0=f.x; if(f.x>x1)x1=f.x; if(f.y<y0)y0=f.y; if(f.y>y1)y1=f.y; }
+    else { const b=f.b; if(b[0]<x0)x0=b[0]; if(b[2]>x1)x1=b[2]; if(b[1]<y0)y0=b[1]; if(b[3]>y1)y1=b[3]; }
+  }
+  for(const o of overlays){ const [N,S,E,Wb]=o.box; if(Wb<x0)x0=Wb; if(E>x1)x1=E; if(S<y0)y0=S; if(N>y1)y1=N; }
+  const bbox = x0<=x1 ? [x0,y0,x1,y1] : null;
+  return { name:layerName, folders, styles:stylesArr, overlays, counts, bbox, skipped, feats, imgs };
+}
+
+/* ---------- stockage (par projet) ---------- */
+function kmlHeadOf(L){ const {feats,imgs,_open,...h}=L; return h; }
+async function kmlSaveHead(L){ if(!KML_LAYERS.includes(L)) return; try{ await idbPut('kml', kmlHeadOf(L)); }catch(e){ console.warn('kml head',e); } }
+const _kmlSaveTimers={};
+function kmlSaveHeadSoon(L){ clearTimeout(_kmlSaveTimers[L.id]); _kmlSaveTimers[L.id]=setTimeout(()=>kmlSaveHead(L),400); }
+async function kmlLoadLayers(){
+  KML_LAYERS=[];
+  try{
+    const heads=await idbGetAll('kml','projectId',activeProjectId);
+    heads.sort((a,b)=>a.ts-b.ts);
+    for(const h of heads){
+      const d=await idbGet('kmlfeat',h.id);
+      if(d) KML_LAYERS.push({ ...h, feats:d.feats||[], imgs:d.imgs||{} });
+    }
+  }catch(e){ console.warn('kml load',e); }
+  kmlImgClear(); kmlPanelRender();
+}
+async function kmlDeleteLayer(id){
+  const L=KML_LAYERS.find(x=>x.id===id); if(!L) return;
+  KML_LAYERS=KML_LAYERS.filter(x=>x.id!==id); clearTimeout(_kmlSaveTimers[id]);
+  try{ await idbDelete('kml',id); await idbDelete('kmlfeat',id); }catch(e){ console.warn(e); }
+  kmlImgClear(); kmlInfoHide(); kmlPanelRender(); renderMap();
+  toast('Couche « '+L.name+' » supprimée');
+}
+
+/* ---------- import ---------- */
+async function kmlImportFile(file){
+  const st=document.getElementById('kmlStatus');
+  const say=t=>{ st.textContent=t; };
+  say('Lecture de '+file.name+'…');
+  const buf=await file.arrayBuffer(); const u8=new Uint8Array(buf);
+  let xmlText, getImg;
+  const dec=b=>new TextDecoder('utf-8').decode(b).replace(/^﻿/,'');
+  if(u8[0]===0x50 && u8[1]===0x4b){
+    const zip=await readZipGeneric(buf);
+    const names=Object.keys(zip.entries);
+    const kmls=names.filter(n=>/\.kml$/i.test(n)).sort((a,b)=>(/(^|\/)doc\.kml$/i.test(b)-/(^|\/)doc\.kml$/i.test(a)) || (a.split('/').length-b.split('/').length));
+    if(!kmls.length) throw new Error('Aucun fichier .kml dans ce KMZ');
+    xmlText=dec(await zip.readEntry(kmls[0]));
+    const lower={}; names.forEach(n=>{ lower[n.toLowerCase()]=n; });
+    getImg=async(href,max)=>{
+      let h=String(href).split('?')[0]; try{ h=decodeURIComponent(h); }catch(_){}
+      h=h.replace(/^\.\//,'').replace(/\\/g,'/');
+      const real=zip.entries[h]?h:lower[h.toLowerCase()];
+      if(!real) return null;
+      const e=zip.entries[real]; if(max && e.compSize>max*2) return null;
+      const bytes=await zip.readEntry(real); if(!bytes || (max && bytes.length>max)) return null;
+      return await blobToDataUrl(new Blob([bytes],{type:kmlMime(real)}));
+    };
+  } else {
+    xmlText=dec(u8);
+    getImg=async()=>null;
+  }
+  say('Analyse du KML… (peut prendre quelques secondes)');
+  await new Promise(r=>setTimeout(r,30));
+  const r=await kmlParse(xmlText,getImg,file.name);
+  if(!r.feats.length && !r.overlays.length) throw new Error('Aucun élément reconnu (points, lignes, polygones, images)');
+  const L={ id:uid(), projectId:activeProjectId, name:r.name, fn:file.name, ts:Date.now(), v:1, o:1,
+    folders:r.folders, styles:r.styles, overlays:r.overlays, counts:r.counts, bbox:r.bbox, skipped:r.skipped, feats:r.feats, imgs:r.imgs };
+  say('Enregistrement sur le téléphone…');
+  await idbPut('kmlfeat',{ id:L.id, feats:L.feats, imgs:L.imgs });
+  await kmlSaveHead(L);
+  KML_LAYERS.push(L);
+  kmlImgClear();
+  return L;
+}
+document.getElementById('btnKmlImport').addEventListener('click',()=>document.getElementById('fileInputKml').click());
+document.getElementById('fileInputKml').addEventListener('change', async e=>{
+  const files=[...e.target.files]; e.target.value='';
+  if(!files.length) return;
+  let last=null;
+  for(const f of files){
+    try{ last=await kmlImportFile(f); }
+    catch(err){ console.error(err); toast('Import impossible ('+f.name+') : '+(err.message||err)); }
+  }
+  document.getElementById('kmlStatus').textContent='';
+  kmlPanelRender();
+  if(last){
+    if(last.bbox) fitToPoints([{lat:last.bbox[1],lon:last.bbox[0]},{lat:last.bbox[3],lon:last.bbox[2]}]);
+    renderMap();
+    const c=last.counts;
+    toast('« '+last.name+' » importé : '+c.p+' pt · '+c.l+' ligne(s) · '+c.g+' polygone(s)'+(c.o?' · '+c.o+' image(s)':'')+(last.skipped?' ('+last.skipped+' élément(s) non géré(s))':''));
+  }
+});
+
+/* ---------- visibilité des dossiers ---------- */
+function kmlFolderVis(L){
+  const v=new Array(L.folders.length);
+  for(let i=0;i<L.folders.length;i++){ const f=L.folders[i]; v[i]=!!f.v && (f.p<0 || v[f.p]); }
+  return v;
+}
+
+/* ---------- images au sol (GroundOverlay) : éléments créés une fois, repositionnés à chaque rendu ---------- */
+function kmlImgClear(){ if(kmlImgLayerEl) kmlImgLayerEl.innerHTML=''; kmlImgEls.clear(); }
+function kmlPlaceImages(W,H){
+  if(!kmlImgLayerEl){ kmlImgLayerEl=document.createElementNS(SVGNS,'g'); kmlImgLayerEl.setAttribute('id','kmlImgLayer'); tileLayerEl.after(kmlImgLayerEl); }
+  const cxp=lonToX(center.lon,zoom), cyp=latToY(center.lat,zoom);
+  for(const L of KML_LAYERS){
+    const fv=kmlFolderVis(L);
+    L.overlays.forEach((o,j)=>{
+      const key=L.id+':'+j; let el=kmlImgEls.get(key);
+      const show = L.v && !o.h && (o.f<0 || fv[o.f]);
+      if(!show){ if(el) el.style.display='none'; return; }
+      if(!el){
+        el=document.createElementNS(SVGNS,'image');
+        el.setAttribute('preserveAspectRatio','none');
+        el.setAttribute('href', o.k ? (L.imgs[o.k]||'') : o.u);
+        kmlImgLayerEl.appendChild(el); kmlImgEls.set(key,el);
+      }
+      const [N,S,E,Wb]=o.box;
+      const x0=lonToX(Wb,zoom)-cxp+W/2, x1=lonToX(E,zoom)-cxp+W/2, y0=latToY(N,zoom)-cyp+H/2, y1=latToY(S,zoom)-cyp+H/2;
+      if(x1<-50||x0>W+50||y1<-50||y0>H+50){ el.style.display='none'; return; }
+      el.style.display='';
+      el.setAttribute('x',x0); el.setAttribute('y',y0); el.setAttribute('width',Math.max(0.5,x1-x0)); el.setAttribute('height',Math.max(0.5,y1-y0));
+      el.setAttribute('opacity',(o.a*L.o).toFixed(2));
+      if(o.rot) el.setAttribute('transform',`rotate(${-o.rot} ${(x0+x1)/2} ${(y0+y1)/2})`); else el.removeAttribute('transform');
+    });
+  }
+}
+
+/* ---------- rendu vectoriel (culling + éclaircissement) ---------- */
+function kmlLum(hex){ const n=parseInt(hex.slice(1),16); return (0.299*(n>>16)+0.587*((n>>8)&255)+0.114*(n&255))/255; }
+function kmlShapeSvg(sh,x,y,r,fill,fo,stroke,sw){
+  const a=`fill="${fill}" fill-opacity="${fo}" stroke="${stroke}" stroke-width="${sw}"`;
+  if(sh==='s') return `<rect x="${(x-r).toFixed(1)}" y="${(y-r).toFixed(1)}" width="${(2*r).toFixed(1)}" height="${(2*r).toFixed(1)}" ${a}/>`;
+  if(sh==='t') return `<polygon points="${x.toFixed(1)},${(y-r*1.15).toFixed(1)} ${(x+r*1.1).toFixed(1)},${(y+r*.9).toFixed(1)} ${(x-r*1.1).toFixed(1)},${(y+r*.9).toFixed(1)}" ${a}/>`;
+  if(sh==='d') return `<polygon points="${x.toFixed(1)},${(y-r*1.2).toFixed(1)} ${(x+r*1.2).toFixed(1)},${y.toFixed(1)} ${x.toFixed(1)},${(y+r*1.2).toFixed(1)} ${(x-r*1.2).toFixed(1)},${y.toFixed(1)}" ${a}/>`;
+  return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" ${a}/>`;
+}
+function kmlPtRadius(I){ return Math.max(2.5, Math.min(11, 4.5*(I?I.s:1)+1)); }
+function renderKml(parts,W,H){
+  if(!KML_LAYERS.length && !kmlImgLayerEl) return;
+  kmlPlaceImages(W,H);
+  if(!KML_LAYERS.length) return;
+  const cxp=lonToX(center.lon,zoom), cyp=latToY(center.lat,zoom);
+  const X=lo=>lonToX(lo,zoom)-cxp+W/2, Y=la=>latToY(la,zoom)-cyp+H/2;
+  const mg=30;
+  const [laTop,loLeft]=unproject(-mg,-mg,W,H), [laBot,loRight]=unproject(W+mg,H+mg,W,H);
+  const vx0=loLeft, vx1=loRight, vy0=laBot, vy1=laTop;
+  KML_LAYERS.forEach((L,li)=>{
+    if(!L.v) return;
+    if(L.bbox && (L.bbox[0]>vx1||L.bbox[2]<vx0||L.bbox[1]>vy1||L.bbox[3]<vy0)) return;
+    const fv=kmlFolderVis(L);
+    const polys=[], lines=[], pts=[];
+    const F=L.feats;
+    for(let i=0;i<F.length;i++){
+      const f=F[i];
+      if(f.h) continue;
+      if(f.t==='p'){ if(f.x<vx0||f.x>vx1||f.y<vy0||f.y>vy1) continue; }
+      else { const b=f.b; if(b[0]>vx1||b[2]<vx0||b[1]>vy1||b[3]<vy0) continue; }
+      if(f.f>=0 && !fv[f.f]) continue;
+      (f.t==='p'?pts:f.t==='l'?lines:polys).push(i);
+    }
+    const out=[]; const defs=[]; const defDone=new Set();
+    const pathOf=(flat,close)=>{
+      let d='', lx=-1e9, ly=-1e9, n=flat.length;
+      for(let k=0;k<n;k+=2){
+        const x=X(flat[k]), y=Y(flat[k+1]);
+        if(k>0 && k<n-2 && Math.abs(x-lx)<0.8 && Math.abs(y-ly)<0.8) continue;
+        d+=(d?'L':'M')+x.toFixed(1)+' '+y.toFixed(1); lx=x; ly=y;
+      }
+      return close? d+'Z' : d;
+    };
+    // polygones
+    let nDraw=0;
+    for(const i of polys){
+      const f=F[i], S=L.styles[f.s], b=f.b;
+      const wpx=(b[2]-b[0])/360*TILE_SIZE*Math.pow(2,zoom);
+      if(wpx<1.2 && polys.length>400) continue;
+      let d=''; for(const ring of f.g) d+=pathOf(ring,true);
+      const fill=S.p.f?`fill="${S.p.c}" fill-opacity="${S.p.a}"`:'fill="none"';
+      const stroke=S.p.o?`stroke="${S.l.c}" stroke-opacity="${S.l.a}" stroke-width="${Math.max(0.8,S.l.w)}" stroke-linejoin="round"`:'stroke="none"';
+      out.push(`<path d="${d}" fill-rule="evenodd" ${fill} ${stroke}/>`); nDraw++;
+    }
+    // lignes
+    for(const i of lines){
+      const f=F[i], S=L.styles[f.s], b=f.b;
+      const wpx=(b[2]-b[0])/360*TILE_SIZE*Math.pow(2,zoom), hpx=(b[3]-b[1])/180*TILE_SIZE*Math.pow(2,zoom);
+      if(lines.length>1500 && wpx<2 && hpx<2) continue;
+      out.push(`<path d="${pathOf(f.g[0],false)}" fill="none" stroke="${S.l.c}" stroke-opacity="${S.l.a}" stroke-width="${Math.max(0.8,S.l.w)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    }
+    // points (grille d'éclaircissement si trop nombreux)
+    let keep=pts;
+    if(pts.length>KML_MAX_PTS){
+      const cell=Math.max(3,Math.ceil(Math.sqrt(W*H/KML_MAX_PTS)));
+      const seen=new Set(); keep=[];
+      for(const i of pts){ const f=F[i]; const k=Math.floor(X(f.x)/cell)*4096+Math.floor(Y(f.y)/cell); if(seen.has(k)) continue; seen.add(k); keep.push(i); }
+    }
+    const labels=[]; const showLbl = zoom>=15 && keep.length<=300;
+    const thin = keep.length>1500;
+    for(const i of keep){
+      const f=F[i], S=L.styles[f.s], I=S.i, x=X(f.x), y=Y(f.y);
+      if(I && I.k && L.imgs[I.k]){
+        const id='ki'+li+'_'+f.s;
+        if(!defDone.has(id)){
+          defDone.add(id);
+          const w=Math.max(10,Math.min(56,28*I.s));
+          const tint = (I.c!=='#ffffff'||I.a<1);
+          let filt='';
+          if(tint){ const n=parseInt(I.c.slice(1),16); filt=`<filter id="${id}f" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${((n>>16)/255).toFixed(3)} 0 0 0 0  0 ${(((n>>8)&255)/255).toFixed(3)} 0 0 0  0 0 ${((n&255)/255).toFixed(3)} 0 0  0 0 0 ${I.a} 0"/></filter>`; }
+          defs.push(`${filt}<image id="${id}" href="${L.imgs[I.k]}" width="${w}" height="${w}" ${tint?`filter="url(#${id}f)"`:''}/>`);
+        }
+        const w=Math.max(10,Math.min(56,28*I.s));
+        const rot=I.hd?` transform="rotate(${I.hd} ${x.toFixed(1)} ${y.toFixed(1)})"`:'';
+        out.push(`<use href="#${id}" x="${(x-I.ax*w).toFixed(1)}" y="${(y-(1-I.ay)*w).toFixed(1)}"${rot}/>`);
+      } else {
+        const col=I?I.c:'#ffd400', al=I?I.a:1, r=kmlPtRadius(I);
+        const dark=kmlLum(col)>0.82;
+        out.push(kmlShapeSvg(I?I.sh:'c',x,y,r,col,al,dark?'#555':'#fff',thin?0:(dark?1:1.2)));
+      }
+      if(showLbl && f.n){ labels.push(i); }
+    }
+    // étiquettes
+    if(showLbl){
+      for(const i of labels){
+        const f=F[i], S=L.styles[f.s], T=S.t, x=X(f.x), y=Y(f.y);
+        const col=(T&&T.c)||'#0d0f14', fs=Math.max(9,Math.min(16,11*(T?T.s:1)));
+        const halo=kmlLum(col)>0.5?'#0d0f14':'#ffffff';
+        out.push(`<text x="${(x+kmlPtRadius(S.i)+3).toFixed(1)}" y="${(y+4).toFixed(1)}" font-family="JetBrains Mono, monospace" font-size="${fs}" font-weight="700" fill="${col}" stroke="${halo}" stroke-width="3" paint-order="stroke" stroke-linejoin="round">${escHtml(f.n)}</text>`);
+      }
+    }
+    if(zoom>=14 && (polys.length+lines.length)<=120){
+      for(const i of polys.concat(lines)){
+        const f=F[i]; if(!f.n) continue;
+        const S=L.styles[f.s], T=S.t, b=f.b;
+        const x=X((b[0]+b[2])/2), y=Y((b[1]+b[3])/2); if(x<0||x>W||y<0||y>H) continue;
+        const col=(T&&T.c)||'#0d0f14', halo=kmlLum(col)>0.5?'#0d0f14':'#ffffff';
+        out.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="700" fill="${col}" stroke="${halo}" stroke-width="3" paint-order="stroke" stroke-linejoin="round">${escHtml(f.n)}</text>`);
+      }
+    }
+    if(out.length) parts.push(`<g pointer-events="none"${L.o<1?` opacity="${L.o}"`:''}>${defs.length?`<defs>${defs.join('')}</defs>`:''}${out.join('')}</g>`);
+  });
+}
+
+/* ---------- toucher une entité (JS pur, pas d'événements sur le SVG) ---------- */
+function kmlSegDist(px,py,ax,ay,bx,by){
+  const dx=bx-ax, dy=by-ay, l2=dx*dx+dy*dy;
+  let t=l2?((px-ax)*dx+(py-ay)*dy)/l2:0; t=Math.max(0,Math.min(1,t));
+  return Math.hypot(px-(ax+t*dx), py-(ay+t*dy));
+}
+function kmlHit(px,py,W,H){
+  if(!KML_LAYERS.length) return null;
+  const cxp=lonToX(center.lon,zoom), cyp=latToY(center.lat,zoom);
+  const X=lo=>lonToX(lo,zoom)-cxp+W/2, Y=la=>latToY(la,zoom)-cyp+H/2;
+  const [tlat,tlon]=unproject(px,py,W,H);
+  const m=18*360/(TILE_SIZE*Math.pow(2,zoom));
+  let best=null;
+  const better=(k,d)=>!best || k<best.k || (k===best.k && d<best.d);
+  for(const L of KML_LAYERS){
+    if(!L.v) continue;
+    const fv=kmlFolderVis(L), F=L.feats;
+    for(let i=0;i<F.length;i++){
+      const f=F[i]; if(f.h) continue;
+      if(f.f>=0 && !fv[f.f]) continue;
+      if(f.t==='p'){
+        if(Math.abs(f.x-tlon)>m||Math.abs(f.y-tlat)>m) continue;
+        const d=Math.hypot(X(f.x)-px,Y(f.y)-py);
+        if(d<=18 && better(0,d)) best={k:0,d,L,f};
+      } else {
+        const b=f.b; if(tlon<b[0]-m||tlon>b[2]+m||tlat<b[1]-m||tlat>b[3]+m) continue;
+        if(f.t==='l'){
+          const a=f.g[0]; let dm=1e9;
+          for(let k=0;k<a.length-2;k+=2){ const d=kmlSegDist(px,py,X(a[k]),Y(a[k+1]),X(a[k+2]),Y(a[k+3])); if(d<dm) dm=d; }
+          if(dm<=12 && better(1,dm)) best={k:1,d:dm,L,f};
+        } else {
+          // polygone : intérieur (pair-impair sur tous les anneaux) ou proche du contour
+          let inside=false, dm=1e9;
+          for(const ring of f.g){
+            for(let k=0,n=ring.length,j=n-2;k<n;j=k,k+=2){
+              const xi=X(ring[k]), yi=Y(ring[k+1]), xj=X(ring[j]), yj=Y(ring[j+1]);
+              if(((yi>py)!==(yj>py)) && (px < (xj-xi)*(py-yi)/(yj-yi)+xi)) inside=!inside;
+              const d=kmlSegDist(px,py,xi,yi,xj,yj); if(d<dm) dm=d;
+            }
+          }
+          if(inside || dm<=10){
+            const area=(b[2]-b[0])*(b[3]-b[1]);
+            if(better(2,area)) best={k:2,d:area,L,f};
+          }
+        }
+      }
+    }
+  }
+  return best;
+}
+function kmlFolderPath(L,fi){ const p=[]; while(fi>=0){ p.unshift(L.folders[fi].n); fi=L.folders[fi].p; } return p; }
+let kmlInfoFeat=null;
+function kmlInfoShow(hit){
+  const {L,f}=hit; kmlInfoFeat=hit;
+  const S=L.styles[f.s];
+  const typ=f.t==='p'?'Point':f.t==='l'?'Ligne':'Polygone';
+  document.getElementById('kmlInfoTitle').textContent=f.n||typ;
+  const path=[L.name].concat(kmlFolderPath(L,f.f)).join(' › ');
+  document.getElementById('kmlInfoSub').textContent=path;
+  const sw=document.getElementById('kmlInfoSwatch');
+  const col=f.t==='p'?(S.i?S.i.c:'#ffd400'):(f.t==='g'&&S.p.f?S.p.c:S.l.c);
+  sw.style.background=col; sw.style.opacity=f.t==='g'&&S.p.f?S.p.a:(f.t==='l'?S.l.a:(S.i?S.i.a:1));
+  const body=document.getElementById('kmlInfoBody');
+  body.textContent=f.d||'';
+  body.style.display=f.d?'':'none';
+  const co=document.getElementById('kmlInfoCoord');
+  if(f.t==='p'){ co.textContent=f.y.toFixed(6)+', '+f.x.toFixed(6); co.style.display=''; }
+  else { co.style.display='none'; }
+  document.getElementById('btnKmlInfoPoint').style.display=f.t==='p'?'':'none';
+  document.getElementById('kmlInfo').classList.add('show');
+}
+function kmlInfoHide(){ kmlInfoFeat=null; document.getElementById('kmlInfo').classList.remove('show'); }
+function kmlTap(px,py,W,H){
+  const hit=kmlHit(px,py,W,H);
+  if(hit) kmlInfoShow(hit); else kmlInfoHide();
+}
+document.getElementById('btnKmlInfoClose').addEventListener('click',kmlInfoHide);
+document.getElementById('btnKmlInfoPoint').addEventListener('click', async ()=>{
+  if(!kmlInfoFeat || kmlInfoFeat.f.t!=='p') return;
+  const f=kmlInfoFeat.f; pointCounter++;
+  const p={ id:uid(), name:f.n||('Point '+pointCounter), lat:f.y, lon:f.x, accuracy:null, ts:Date.now(), notes:f.d?f.d.slice(0,400):'', media:[] };
+  points.push(p); await persistPoint(p); kmlInfoHide(); renderAll(); toast('Point « '+p.name+' » créé');
+});
+
+/* ---------- panneau des couches ---------- */
+function kmlOpenPanel(){
+  cancelPointConfirm(); if(multiMode) setMultiMode(false);
+  ['listPanel','sitesPanel','coordsPanel'].forEach(id=>document.getElementById(id).classList.remove('open'));
+  document.getElementById('kmlPanel').classList.add('open'); kmlPanelRender();
+}
+function kmlFmt(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,' '); }
+function kmlPanelRender(){
+  const box=document.getElementById('kmlList'); if(!box) return;
+  document.getElementById('btnKml').classList.toggle('on', KML_LAYERS.some(l=>l.v));
+  if(!KML_LAYERS.length){ box.innerHTML='<div class="kml-empty">Aucune couche pour cette mission.<br>Importe un fichier <b>.kmz</b> ou <b>.kml</b> (Google Earth, Google My Maps, drive test…) : couleurs, transparences, épaisseurs, remplissages et icônes sont conservés.</div>'; return; }
+  box.innerHTML=KML_LAYERS.map(L=>{
+    const c=L.counts, bits=[];
+    if(c.p) bits.push(kmlFmt(c.p)+' pt'); if(c.l) bits.push(kmlFmt(c.l)+' ligne'+(c.l>1?'s':'')); if(c.g) bits.push(kmlFmt(c.g)+' polygone'+(c.g>1?'s':'')); if(c.o) bits.push(c.o+' image'+(c.o>1?'s':''));
+    let tree='';
+    if(L._open && L.folders.length){
+      const fv=kmlFolderVis(L);
+      tree='<div class="kml-tree">'+L.folders.map((f,i)=>{
+        let depth=0, p=f.p; while(p>=0){ depth++; p=L.folders[p].p; }
+        return `<label class="kml-f" style="padding-left:${depth*14}px"><input type="checkbox" data-act="fold" data-i="${i}" ${f.v?'checked':''}> <span class="${fv[i]?'':'off'}">${escHtml(f.n)}</span>${f.c?` <i>${kmlFmt(f.c)}</i>`:''}</label>`;
+      }).join('')+'</div>';
+    }
+    return `<div class="kml-card" data-l="${L.id}">
+      <div class="kml-row">
+        <input type="checkbox" class="kml-vis" data-act="vis" ${L.v?'checked':''} title="Afficher / masquer">
+        <div class="kml-body"><div class="kml-name">${escHtml(L.name)}</div><div class="kml-meta">${bits.join(' · ')||'—'}${L.skipped?` · <span title="NetworkLink, écran…">${L.skipped} ignoré(s)</span>`:''}</div></div>
+        <button class="kml-ic" data-act="zoom" title="Zoomer sur la couche">🎯</button>
+        <button class="kml-ic" data-act="del" title="Supprimer la couche">🗑</button>
+      </div>
+      <div class="kml-row2"><span>Opacité</span><input type="range" min="15" max="100" value="${Math.round(L.o*100)}" data-act="op">${L.folders.length?`<button class="kml-tg" data-act="tree">${L._open?'Dossiers ▴':'Dossiers ▾'}</button>`:''}</div>
+      ${tree}
+    </div>`;
+  }).join('');
+}
+document.getElementById('kmlList').addEventListener('click', e=>{
+  const t=e.target.closest('[data-act]'); if(!t) return;
+  const card=t.closest('[data-l]'); const L=card && KML_LAYERS.find(x=>x.id===card.dataset.l); if(!L) return;
+  const act=t.dataset.act;
+  if(act==='zoom'){
+    if(L.bbox){ fitToPoints([{lat:L.bbox[1],lon:L.bbox[0]},{lat:L.bbox[3],lon:L.bbox[2]}]); renderMap(); document.getElementById('kmlPanel').classList.remove('open'); }
+  } else if(act==='del'){
+    if(t.dataset.arm){ kmlDeleteLayer(L.id); }
+    else { t.dataset.arm='1'; t.textContent='Sûr ?'; t.classList.add('arm'); setTimeout(()=>{ if(t.isConnected){ delete t.dataset.arm; t.textContent='🗑'; t.classList.remove('arm'); } },3000); }
+  } else if(act==='tree'){ L._open=!L._open; kmlPanelRender(); }
+});
+document.getElementById('kmlList').addEventListener('change', e=>{
+  const t=e.target.closest('[data-act]'); if(!t) return;
+  const card=t.closest('[data-l]'); const L=card && KML_LAYERS.find(x=>x.id===card.dataset.l); if(!L) return;
+  if(t.dataset.act==='vis'){ L.v=t.checked?1:0; kmlSaveHeadSoon(L); kmlPanelRender(); renderMap(); }
+  else if(t.dataset.act==='fold'){ const f=L.folders[+t.dataset.i]; if(f){ f.v=t.checked?1:0; kmlSaveHeadSoon(L); kmlPanelRender(); renderMap(); } }
+});
+document.getElementById('kmlList').addEventListener('input', e=>{
+  const t=e.target.closest('[data-act="op"]'); if(!t) return;
+  const card=t.closest('[data-l]'); const L=card && KML_LAYERS.find(x=>x.id===card.dataset.l); if(!L) return;
+  L.o=Math.max(.15,Math.min(1,(+t.value)/100)); kmlSaveHeadSoon(L); renderMap();
+});
+document.getElementById('btnKml').addEventListener('click', kmlOpenPanel);
+document.getElementById('btnCloseKml').addEventListener('click', ()=>document.getElementById('kmlPanel').classList.remove('open'));
+
 
 async function deletePoint(id){
   const p = points.find(x=>x.id===id);
@@ -2254,7 +2907,7 @@ function renderSitesAll(){
 }
 
 const sitesPanel=document.getElementById('sitesPanel');
-document.getElementById('btnOpenSites').addEventListener('click', ()=>{ cancelPointConfirm(); sitesPanel.classList.add('open'); });
+document.getElementById('btnOpenSites').addEventListener('click', ()=>{ cancelPointConfirm(); document.getElementById('kmlPanel').classList.remove('open'); sitesPanel.classList.add('open'); });
 document.getElementById('btnCloseSites').addEventListener('click', ()=>sitesPanel.classList.remove('open'));
 
 document.getElementById('btnImportTypoMobile').addEventListener('click', ()=>document.getElementById('fileInputTypoMobile').click());
@@ -2363,7 +3016,7 @@ document.getElementById('btnCloseSiteDetail').addEventListener('click', ()=>{
    7. LISTE DES POINTS
    ========================================================= */
 const listPanel=document.getElementById('listPanel');
-document.getElementById('btnOpenList').addEventListener('click', ()=>{ cancelPointConfirm(); listPanel.classList.add('open'); });
+document.getElementById('btnOpenList').addEventListener('click', ()=>{ cancelPointConfirm(); document.getElementById('kmlPanel').classList.remove('open'); listPanel.classList.add('open'); });
 document.getElementById('btnCloseList').addEventListener('click', ()=>listPanel.classList.remove('open'));
 
 function renderList(){
